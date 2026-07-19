@@ -3,9 +3,10 @@ import { useNavigate } from 'react-router-dom'
 import { useAppState } from '../../state/AppState'
 import { useViewer } from '../../api/queries'
 import { decodeShareFragment, encodeShareFragment, isLogin, isRepoRef } from '../../storage/config'
+import { Panel } from '../shared/ui'
 
 function ListEditor({
-  label, placeholder, items, validate, onChange, hint,
+  label, placeholder, items, validate, onChange, hint, hue,
 }: {
   label: string
   placeholder: string
@@ -13,6 +14,7 @@ function ListEditor({
   validate: (v: string) => boolean
   onChange: (items: string[]) => void
   hint: string
+  hue: string
 }) {
   const [draft, setDraft] = useState('')
   const [invalid, setInvalid] = useState(false)
@@ -31,8 +33,7 @@ function ListEditor({
   }
 
   return (
-    <section className="setting-block">
-      <h3>{label}</h3>
+    <Panel title={label} hue={hue} count={items.length}>
       <form onSubmit={add} className="inline-form">
         <input
           value={draft}
@@ -43,15 +44,17 @@ function ListEditor({
         <button type="submit">Add</button>
       </form>
       {invalid ? <p className="field-error">Invalid format — expected {hint}</p> : <p className="field-hint">{hint}</p>}
-      <ul className="chip-list">
-        {items.map((item) => (
-          <li key={item} className="chip">
-            {item}
-            <button aria-label={`Remove ${item}`} onClick={() => onChange(items.filter((i) => i !== item))}>×</button>
-          </li>
-        ))}
-      </ul>
-    </section>
+      {items.length > 0 && (
+        <ul className="chip-list">
+          {items.map((item) => (
+            <li key={item} className="chip">
+              {item}
+              <button aria-label={`Remove ${item}`} onClick={() => onChange(items.filter((i) => i !== item))}>×</button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </Panel>
   )
 }
 
@@ -83,8 +86,15 @@ export function SettingsPage() {
     setTimeout(() => setCopied(false), 2000)
   }
 
+  const owners = new Set(config.repos.map((repo) => repo.split('/')[0]))
+
   return (
     <div className="settings">
+      <div className="page-head">
+        <h2>Settings</h2>
+        <p>Your token and watchlist live in this browser only.</p>
+      </div>
+
       {pendingImport && (
         <div className="import-banner">
           <p>
@@ -101,20 +111,13 @@ export function SettingsPage() {
           >
             Import
           </button>
-          <button
-            className="secondary"
-            onClick={clearPendingImport}
-          >
-            Dismiss
-          </button>
+          <button className="secondary" onClick={clearPendingImport}>Dismiss</button>
         </div>
       )}
 
-      <section className="setting-block">
-        <h3>GitHub token</h3>
+      <Panel title="GitHub token" hue="var(--attn)">
         <p className="field-hint">
-          Fine-grained personal access token with read access to the repos you watch. Stored only in this
-          browser, sent only to api.github.com.
+          Fine-grained personal access token, stored only in this browser and sent only to api.github.com.
         </p>
         <form
           className="inline-form"
@@ -136,7 +139,22 @@ export function SettingsPage() {
         </form>
         {token && viewer.data && <p className="field-ok">✓ Authenticated as {viewer.data}</p>}
         {token && viewer.error && <p className="field-error">Token check failed: {viewer.error.message}</p>}
-      </section>
+
+        <dl className="perms">
+          <div><dt>Metadata</dt><dd>Required on every fine-grained token</dd></div>
+          <div><dt>Pull requests</dt><dd>PR titles, review decisions, requested reviewers</dd></div>
+          <div><dt>Commit statuses</dt><dd>CI badges on the board</dd></div>
+          <div><dt>Checks</dt><dd>CI badges for GitHub Actions runs</dd></div>
+        </dl>
+        <p className="field-hint">All read-only. No write permission is ever used.</p>
+        {owners.size > 1 && (
+          <p className="field-warn">
+            Your watchlist spans {owners.size} owners ({[...owners].join(', ')}). A fine-grained token can only
+            reach one owner's repos, and GitHub returns the rest as missing rather than as an error — use a
+            classic token with <code>repo</code> scope, or narrow the watchlist.
+          </p>
+        )}
+      </Panel>
 
       <ListEditor
         label="Watched repositories"
@@ -145,6 +163,7 @@ export function SettingsPage() {
         validate={isRepoRef}
         onChange={(repos) => setConfig({ ...config, repos })}
         hint="owner/name, e.g. vercel/next.js"
+        hue="var(--stage-review)"
       />
 
       <ListEditor
@@ -154,10 +173,10 @@ export function SettingsPage() {
         validate={isLogin}
         onChange={(users) => setConfig({ ...config, users })}
         hint="GitHub username, e.g. octocat"
+        hue="var(--stage-draft)"
       />
 
-      <section className="setting-block">
-        <h3>Stale threshold</h3>
+      <Panel title="Stale threshold" hue="var(--stage-changes)">
         <label className="inline-form">
           Mark a PR stale after
           <input
@@ -172,15 +191,15 @@ export function SettingsPage() {
           />
           days without updates
         </label>
-      </section>
+        <p className="field-hint">Drives the idle stripe on board cards and the “Idle only” filter.</p>
+      </Panel>
 
-      <section className="setting-block">
-        <h3>Share config</h3>
+      <Panel title="Share config" hue="var(--stage-approved)">
         <p className="field-hint">
           Copies a link containing your watchlist (repos, people, stale threshold). Your token is never included.
         </p>
         <button onClick={copyShareLink}>{copied ? 'Copied ✓' : 'Copy share link'}</button>
-      </section>
+      </Panel>
     </div>
   )
 }
