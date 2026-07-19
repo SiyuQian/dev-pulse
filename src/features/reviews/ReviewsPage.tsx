@@ -2,21 +2,33 @@ import { Link } from 'react-router-dom'
 import { useOpenPrs, useViewer } from '../../api/queries'
 import { useAppState } from '../../state/AppState'
 import type { PullRequest } from '../../api/types'
+import { Avatar, Panel, Queue, QueueRow } from '../shared/ui'
+import { daysSince, formatDays, median } from '../shared/format'
 
-function PrList({ prs, emptyText }: { prs: PullRequest[]; emptyText: string }) {
-  if (prs.length === 0) return <p className="empty">{emptyText}</p>
-  return (
-    <ul className="pr-list">
-      {prs.map((pr) => (
-        <li key={pr.id}>
-          <a href={pr.url} target="_blank" rel="noreferrer">
-            <span className="col-repo">{pr.repo}</span> #{pr.number} {pr.title}
-          </a>
-          <span className="pr-list-meta">by {pr.author}</span>
-        </li>
-      ))}
-    </ul>
-  )
+function oldestNote(prs: PullRequest[], verb = 'waiting'): string | undefined {
+  if (prs.length === 0) return undefined
+  const oldest = Math.max(...prs.map((pr) => daysSince(pr.updatedAt)))
+  return `oldest ${verb} ${formatDays(oldest)}`
+}
+
+function rows(prs: PullRequest[], staleDays: number) {
+  return [...prs]
+    .sort((a, b) => daysSince(b.updatedAt) - daysSince(a.updatedAt))
+    .map((pr) => {
+      const idle = daysSince(pr.updatedAt)
+      return (
+        <QueueRow
+          key={pr.id}
+          url={pr.url}
+          repo={pr.repo}
+          number={pr.number}
+          title={pr.title}
+          author={pr.author}
+          meta={formatDays(idle)}
+          tone={idle >= staleDays ? 'bad' : idle >= staleDays * 0.6 ? 'warn' : undefined}
+        />
+      )
+    })
 }
 
 export function ReviewsPage() {
@@ -30,6 +42,7 @@ export function ReviewsPage() {
   if (error) return <p className="empty error">Failed to load PRs: {error.message}</p>
   if (isPending) return <p className="empty">Loading review activity…</p>
 
+  const staleDays = config.staleDays
   const prs = data.prs.filter((pr) => !pr.isDraft)
   const needsMe = viewer ? prs.filter((pr) => pr.requestedReviewers.includes(viewer)) : []
   const changesRequested = prs.filter((pr) => pr.reviewDecision === 'CHANGES_REQUESTED')
@@ -45,40 +58,86 @@ export function ReviewsPage() {
     }
   }
   const reviewerLoad = [...load.entries()].sort((a, b) => b[1] - a[1])
+  const maxLoad = Math.max(1, ...reviewerLoad.map(([, n]) => n))
+  const awaitingMedian = median(awaitingFirstReview.map((pr) => daysSince(pr.updatedAt)))
 
   return (
-    <div className="reviews">
-      <section>
-        <h3>Needs your review ({needsMe.length})</h3>
-        <PrList prs={needsMe} emptyText={viewer ? 'Nothing waiting on you. 🎉' : 'Save a valid token to see PRs assigned to you.'} />
-      </section>
-      <section>
-        <h3>Changes requested ({changesRequested.length})</h3>
-        <PrList prs={changesRequested} emptyText="No PRs blocked on author changes." />
-      </section>
-      <section>
-        <h3>Awaiting first review ({awaitingFirstReview.length})</h3>
-        <PrList prs={awaitingFirstReview} emptyText="No PRs waiting for a first review." />
-      </section>
-      <section>
-        <h3>Approved, ready to merge ({approved.length})</h3>
-        <PrList prs={approved} emptyText="No approved PRs waiting to merge." />
-      </section>
-      <section>
-        <h3>Review load</h3>
-        {reviewerLoad.length === 0 ? (
-          <p className="empty">No outstanding review requests.</p>
-        ) : (
-          <table className="pr-table narrow">
-            <thead><tr><th>Reviewer</th><th>Pending requests</th></tr></thead>
-            <tbody>
-              {reviewerLoad.map(([reviewer, count]) => (
-                <tr key={reviewer}><td>{reviewer}</td><td>{count}</td></tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </section>
+    <div>
+      <div className="page-head">
+        <h2>Review activity</h2>
+        <p>
+          {prs.length} PRs in review across {config.repos.length + config.users.length} watched
+          {config.users.length > 0 ? ' repos and people' : ' repos'}
+        </p>
+      </div>
+
+      <div className="two-col">
+        <div>
+          <Panel
+            title="Needs your review"
+            hue="var(--attn)"
+            count={needsMe.length}
+            note={oldestNote(needsMe)}
+          >
+            <Queue empty={viewer ? 'Nothing waiting on you. 🎉' : 'Save a valid token to see PRs assigned to you.'}>
+              {rows(needsMe, staleDays)}
+            </Queue>
+          </Panel>
+
+          <Panel
+            title="Changes requested"
+            hue="var(--stage-changes)"
+            count={changesRequested.length}
+            note={oldestNote(changesRequested, 'on author')}
+          >
+            <Queue empty="No PRs blocked on author changes.">{rows(changesRequested, staleDays)}</Queue>
+          </Panel>
+
+          <Panel
+            title="Awaiting first review"
+            hue="var(--stage-review)"
+            count={awaitingFirstReview.length}
+            note={awaitingMedian === null ? undefined : `median wait ${formatDays(awaitingMedian)}`}
+          >
+            <Queue empty="No PRs waiting for a first review.">{rows(awaitingFirstReview, staleDays)}</Queue>
+          </Panel>
+
+          <Panel
+            title="Approved, ready to merge"
+            hue="var(--stage-approved)"
+            count={approved.length}
+            note={oldestNote(approved, 'unmerged')}
+          >
+            <Queue empty="No approved PRs waiting to merge.">{rows(approved, staleDays)}</Queue>
+          </Panel>
+        </div>
+
+        <div>
+          <Panel
+            title="Review load"
+            hue="var(--stage-review)"
+            count={reviewerLoad.length}
+            note={reviewerLoad.length === 0 ? undefined : `${prs.reduce((n, pr) => n + pr.requestedReviewers.length, 0)} open requests`}
+          >
+            {reviewerLoad.length === 0 ? (
+              <p className="panel-empty">No outstanding review requests.</p>
+            ) : (
+              <ul className="load">
+                {reviewerLoad.map(([reviewer, count]) => (
+                  <li key={reviewer}>
+                    <Avatar login={reviewer} />
+                    <span className="load-name">{reviewer}</span>
+                    <span className="load-track">
+                      <i style={{ width: `${(count / maxLoad) * 100}%`, background: 'var(--hue)' }} />
+                    </span>
+                    <span className="load-count">{count}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Panel>
+        </div>
+      </div>
     </div>
   )
 }

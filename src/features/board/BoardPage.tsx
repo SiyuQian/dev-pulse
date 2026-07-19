@@ -3,6 +3,8 @@ import { Link } from 'react-router-dom'
 import { useOpenPrs, useViewer } from '../../api/queries'
 import { useAppState } from '../../state/AppState'
 import type { PullRequest } from '../../api/types'
+import { Avatar } from '../shared/ui'
+import { formatDays, median } from '../shared/format'
 
 type StageKey = 'draft' | 'review' | 'changes' | 'approved'
 type Filter = 'all' | 'mine' | 'stale'
@@ -13,8 +15,6 @@ const STAGES: { key: StageKey; label: string; hue: string; tint: string; edge: s
   { key: 'changes', label: 'Changes requested', hue: 'var(--stage-changes)', tint: '#f9f0ee', edge: '#f0dfdb' },
   { key: 'approved', label: 'Approved, ready to merge', hue: 'var(--stage-approved)', tint: '#edf5f0', edge: '#dceae2' },
 ]
-
-const AVATAR_HUES = ['#7a6bc4', '#3d7ea6', '#b8703a', '#4e8b63', '#b0537c', '#8a6f2e', '#5b7fa8']
 
 function stageOf(pr: PullRequest): StageKey {
   if (pr.isDraft) return 'draft'
@@ -27,24 +27,6 @@ function stageOf(pr: PullRequest): StageKey {
 // timeline, so this is the closest honest proxy for "stuck in this stage".
 function idleDays(pr: PullRequest): number {
   return (Date.now() - new Date(pr.updatedAt).getTime()) / 86_400_000
-}
-
-function formatDays(days: number): string {
-  if (days < 1) return `${Math.max(1, Math.round(days * 24))}h`
-  return `${days < 10 ? days.toFixed(1) : Math.round(days)}d`
-}
-
-function median(values: number[]): number | null {
-  if (values.length === 0) return null
-  const sorted = [...values].sort((a, b) => a - b)
-  const mid = Math.floor(sorted.length / 2)
-  return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2
-}
-
-function avatarHue(login: string): string {
-  let hash = 0
-  for (const char of login) hash = (hash * 31 + char.charCodeAt(0)) % 9973
-  return AVATAR_HUES[hash % AVATAR_HUES.length]
 }
 
 function PrCard({ pr, staleDays, needsMyReview }: { pr: PullRequest; staleDays: number; needsMyReview: boolean }) {
@@ -72,9 +54,7 @@ function PrCard({ pr, staleDays, needsMyReview }: { pr: PullRequest; staleDays: 
       {ciPending && <span className="flag flag-ci-pending">CI running</span>}
       <p className="pr-card-title">{pr.title}</p>
       <div className="pr-card-foot">
-        <span className="avatar" style={{ background: avatarHue(pr.author) }} aria-hidden="true">
-          {pr.author.slice(0, 2).toUpperCase()}
-        </span>
+        <Avatar login={pr.author} />
         <span className="pr-card-who">{pr.author}</span>
         <span className="pr-card-meta">
           <span className="add">+{pr.additions}</span> <span className="del">−{pr.deletions}</span> · {formatDays(idle)}
