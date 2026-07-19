@@ -1,0 +1,350 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>dev-pulse · 三套 PR Dashboard 方案</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,800&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box}
+body{margin:0}
+:root{
+  --sans:'Inter',ui-sans-serif,system-ui,sans-serif;
+  --display:'Bricolage Grotesque','Inter',sans-serif;
+  --mono:'JetBrains Mono',ui-monospace,monospace;
+}
+a{color:inherit}
+button{font:inherit;cursor:pointer}
+:focus-visible{outline:2px solid currentColor;outline-offset:2px}
+
+/* ── shell ─────────────────────────────────────────── */
+.shell{background:#0B0D11;color:#fff;font-family:var(--sans);padding:20px 24px 0;position:sticky;top:0;z-index:50;border-bottom:1px solid #23272F}
+.shell-top{display:flex;flex-wrap:wrap;gap:16px;align-items:baseline;justify-content:space-between;max-width:1400px;margin:0 auto}
+.shell h1{font-family:var(--display);font-size:15px;font-weight:800;letter-spacing:-.01em;margin:0}
+.shell h1 span{color:#6B7280;font-weight:400}
+.shell p{margin:0;font-size:12.5px;color:#8B929E;max-width:52ch;line-height:1.5}
+.tabs{display:flex;gap:2px;max-width:1400px;margin:16px auto 0}
+.tab{background:none;border:0;border-bottom:2px solid transparent;color:#8B929E;padding:9px 16px;font-size:13px;font-weight:500;letter-spacing:.01em}
+.tab:hover{color:#fff}
+.tab[aria-selected=true]{color:#fff;border-bottom-color:#fff}
+.tab b{font-family:var(--mono);font-size:11px;font-weight:500;color:#5A616D;margin-right:7px}
+.tab[aria-selected=true] b{color:#fff}
+.panel{display:none}
+.panel.on{display:block}
+.note{max-width:1400px;margin:0 auto;padding:22px 24px 0;font-size:12.5px;line-height:1.6}
+
+/* ══ A · QUEUE ══════════════════════════════════════ */
+.qz{background:#EDEFF3;color:#10131A;font-family:var(--sans);min-height:100vh;padding-bottom:80px}
+.qz .note{color:#5E6674}
+.qz .note b{color:#10131A}
+.q-wrap{max-width:880px;margin:0 auto;padding:34px 24px}
+.q-head{margin-bottom:38px}
+.q-kicker{font-family:var(--mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:#8A93A3;margin:0 0 12px}
+.q-h{font-family:var(--display);font-size:clamp(30px,4.6vw,46px);font-weight:800;letter-spacing:-.035em;line-height:1.1;margin:0;max-width:22ch}
+.q-h em{font-style:normal;color:#C9721A}
+.q-sub{margin:14px 0 0;font-size:14px;color:#5E6674;line-height:1.55}
+.q-sec{margin-top:40px}
+.q-sec-h{display:flex;align-items:baseline;gap:10px;padding-bottom:9px;border-bottom:1.5px solid #10131A;margin-bottom:2px}
+.q-sec-h h3{font-family:var(--display);font-size:15px;font-weight:700;letter-spacing:-.01em;margin:0}
+.q-sec-h .n{font-family:var(--mono);font-size:12px;color:#8A93A3;margin-left:auto}
+.q-item{display:block;text-decoration:none;padding:17px 0 15px;border-bottom:1px solid #DCE0E7;position:relative}
+.q-item:hover{background:#E4E7ED;box-shadow:-12px 0 0 #E4E7ED,12px 0 0 #E4E7ED}
+.q-line{font-size:16px;line-height:1.45;letter-spacing:-.01em}
+.q-line .who{font-weight:600}
+.q-line .verb{color:#5E6674}
+.q-line .what{font-weight:600;border-bottom:1.5px solid #C6CCD6}
+.q-line .repo{font-family:var(--mono);font-size:12.5px;color:#5E6674;background:#E1E5EB;padding:1.5px 6px;border-radius:3px}
+.q-meta{display:flex;align-items:center;gap:14px;margin-top:10px;font-family:var(--mono);font-size:11.5px;color:#78808F;flex-wrap:wrap}
+.q-meta .amber{color:#B0640E;font-weight:500}
+.q-meta .red{color:#A8332B;font-weight:500}
+.q-meta .green{color:#2C6B45;font-weight:500}
+/* signature: wait meter */
+.q-meter{height:3px;background:#DCE0E7;margin-top:11px;position:relative;overflow:hidden}
+.q-meter i{position:absolute;inset:0 auto 0 0;background:#10131A}
+.q-meter.warn i{background:#C9721A}
+.q-meter.bad i{background:#A8332B}
+.q-meter b{position:absolute;top:-3px;bottom:-3px;width:1px;background:#10131A;opacity:.35}
+.q-quiet .q-line{font-size:14.5px;color:#5E6674}
+.q-quiet .q-line .what{font-weight:500;border:0}
+.q-empty{font-size:14px;color:#8A93A3;padding:18px 0;border-bottom:1px solid #DCE0E7}
+
+/* ══ B · FLOW ═══════════════════════════════════════ */
+.fz{background:#F7F5F2;color:#1B1A17;font-family:var(--sans);min-height:100vh;padding-bottom:80px}
+.fz .note{color:#6B665D}
+.fz .note b{color:#1B1A17}
+.f-wrap{max-width:1400px;margin:0 auto;padding:30px 24px}
+.f-head{display:flex;flex-wrap:wrap;gap:18px;align-items:flex-end;justify-content:space-between;margin-bottom:26px}
+.f-head h2{font-family:var(--display);font-size:30px;font-weight:800;letter-spacing:-.03em;margin:0}
+.f-head p{margin:6px 0 0;font-size:13.5px;color:#6B665D}
+.f-filters{display:flex;gap:7px}
+.chip{border:1px solid #DAD5CC;background:#fff;border-radius:20px;padding:6px 13px;font-size:12.5px;color:#6B665D}
+.chip[aria-pressed=true]{background:#1B1A17;border-color:#1B1A17;color:#fff}
+.f-cols{display:grid;grid-template-columns:repeat(4,minmax(210px,1fr));gap:14px;align-items:start}
+.f-col{border-radius:12px;padding:12px;background:var(--tint);border:1px solid var(--edge)}
+.f-col-h{display:flex;align-items:center;gap:8px;margin:2px 4px 12px}
+.f-col-h .dot{width:8px;height:8px;border-radius:50%;background:var(--hue)}
+.f-col-h h3{font-size:13px;font-weight:700;letter-spacing:-.005em;margin:0}
+.f-col-h .ct{font-family:var(--mono);font-size:11.5px;color:#8A857B;margin-left:auto}
+.f-col-sub{font-family:var(--mono);font-size:10.5px;color:#8A857B;margin:-8px 4px 12px;letter-spacing:.02em}
+.card{display:block;text-decoration:none;background:#fff;border:1px solid #E7E2D9;border-radius:9px;padding:11px 12px 10px;margin-bottom:9px;box-shadow:0 1px 0 rgba(27,26,23,.04)}
+.card:hover{border-color:#B9B2A5;box-shadow:0 3px 12px rgba(27,26,23,.09)}
+.card-top{display:flex;gap:8px;align-items:baseline;margin-bottom:6px}
+.card-repo{font-family:var(--mono);font-size:10.5px;color:#8A857B;letter-spacing:.02em}
+.card-num{font-family:var(--mono);font-size:10.5px;color:#B9B2A5;margin-left:auto}
+.card-t{font-size:13.5px;font-weight:600;line-height:1.35;letter-spacing:-.01em;margin:0 0 9px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.card-foot{display:flex;align-items:center;gap:8px}
+.av{width:19px;height:19px;border-radius:50%;background:var(--av,#D8D2C7);color:#fff;font-size:9.5px;font-weight:700;display:grid;place-items:center;letter-spacing:.02em}
+.card-who{font-size:11.5px;color:#6B665D}
+.card-age{font-family:var(--mono);font-size:10.5px;color:#8A857B;margin-left:auto}
+/* signature: diff bar + age heat stripe */
+.diff{display:flex;height:3px;border-radius:2px;overflow:hidden;background:#EEEAE3;margin:9px 0 0}
+.diff .a{background:#4E9B6B}.diff .d{background:#C2685C}
+.heat{height:2px;border-radius:0 0 9px 9px;margin:11px -12px -10px;background:linear-gradient(90deg,var(--hue) 0%,var(--hue) var(--age),transparent var(--age))}
+.card.hot .heat{background:linear-gradient(90deg,#C2685C 0%,#C2685C var(--age),transparent var(--age))}
+.f-flag{display:inline-block;font-size:10.5px;font-weight:600;padding:1.5px 6px;border-radius:4px;background:#F0E2D4;color:#93531F;margin-bottom:7px}
+
+/* ══ C · CONSOLE ════════════════════════════════════ */
+.cz{background:#0E1116;color:#D5DAE3;font-family:var(--mono);min-height:100vh;padding-bottom:80px}
+.cz .note{color:#7A8494;font-family:var(--sans)}
+.cz .note b{color:#D5DAE3}
+.c-wrap{max-width:1400px;margin:0 auto;padding:28px 24px}
+.c-head{display:flex;flex-wrap:wrap;gap:20px;align-items:flex-end;justify-content:space-between;border-bottom:1px solid #1E242E;padding-bottom:16px;margin-bottom:22px}
+.c-head h2{font-family:var(--display);font-size:22px;font-weight:800;letter-spacing:-.02em;margin:0;color:#fff}
+.c-head .sub{font-size:11px;color:#6B7484;letter-spacing:.04em;margin-top:5px}
+.c-tiles{display:flex;gap:26px}
+.tile .v{font-size:23px;font-weight:700;color:#fff;letter-spacing:-.02em;line-height:1}
+.tile .k{font-size:10px;color:#6B7484;letter-spacing:.08em;text-transform:uppercase;margin-top:5px}
+.tile .v.warn{color:#E0A33C}.tile .v.bad{color:#E2695E}
+.c-grid{display:grid;grid-template-columns:1.55fr 1fr;gap:22px;align-items:start}
+@media(max-width:980px){.c-grid{grid-template-columns:1fr}.f-cols{grid-template-columns:1fr 1fr}}
+@media(max-width:620px){.f-cols{grid-template-columns:1fr}.c-tiles{gap:18px}}
+.c-panel-h{font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:#6B7484;margin:0 0 11px}
+.mtx{width:100%;border-collapse:collapse}
+.mtx th{font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:#6B7484;font-weight:400;text-align:left;padding:0 8px 8px;border-bottom:1px solid #1E242E}
+.mtx td{padding:9px 8px;border-bottom:1px solid #161B23;vertical-align:middle}
+.mtx tr:hover td{background:#141922}
+.who-cell{display:flex;align-items:center;gap:8px}
+.who-cell .av{width:20px;height:20px;font-family:var(--sans)}
+.who-cell .nm{font-size:12px;color:#E7EBF1}
+/* signature: chip lanes coded by state */
+.lane{display:flex;gap:3px;flex-wrap:wrap}
+.pchip{width:22px;height:14px;border-radius:2px;display:grid;place-items:center;font-size:8px;color:#0E1116;font-weight:700}
+.s-app{background:#4FA97A}.s-chg{background:#E2695E}.s-req{background:#5D8BD4}.s-drf{background:#3A4250;color:#8B95A6}.s-stale{background:#E0A33C}
+.legend{display:flex;gap:14px;flex-wrap:wrap;font-size:10px;color:#6B7484;margin-top:12px}
+.legend i{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:5px;vertical-align:-1px}
+.debt{list-style:none;margin:0;padding:0}
+.debt li{display:flex;align-items:center;gap:9px;padding:9px 0;border-bottom:1px solid #161B23;font-size:11.5px}
+.debt .arw{color:#3E4757}
+.debt .nm{color:#E7EBF1}
+.debt .d{margin-left:auto;color:#E0A33C}
+.debt .d.ok{color:#5A6373}
+.spark{display:flex;align-items:flex-end;gap:2px;height:34px;margin:10px 0 4px}
+.spark i{flex:1;background:#25303F;border-radius:1px 1px 0 0}
+.spark i.hi{background:#5D8BD4}
+.c-side{border:1px solid #1E242E;border-radius:10px;padding:16px}
+.c-side + .c-side{margin-top:16px}
+</style>
+</head>
+<body>
+
+<header class="shell">
+  <div class="shell-top">
+    <h1>dev-pulse <span>/ PR dashboard 重设计</span></h1>
+    <p>三套方案，同一份数据。它们回答的是三个不同的问题，选哪套取决于 dashboard 每天真正被打开的理由。</p>
+  </div>
+  <nav class="tabs" role="tablist">
+    <button class="tab" role="tab" aria-selected="true" data-p="a"><b>A</b>待办队列</button>
+    <button class="tab" role="tab" aria-selected="false" data-p="b"><b>B</b>流水线看板</button>
+    <button class="tab" role="tab" aria-selected="false" data-p="c"><b>C</b>团队控制台</button>
+  </nav>
+</header>
+
+<!-- ═══ A ═══ -->
+<section class="panel on qz" id="p-a">
+  <p class="note"><b>回答的问题：我接下来该做什么？</b> 不是表格，是一条按紧迫度排序的句子流。每条 PR 读起来是一句话，下方一根等待计量条随时间填满，越过 stale 阈值变琥珀色。信息密度低，但打开三秒就知道该点哪一条。</p>
+  <div class="q-wrap">
+    <div class="q-head">
+      <p class="q-kicker">周四 · 07:40 · 4 个仓库</p>
+      <h1 class="q-h">今天有 <em>3 件事</em> 卡在你身上。</h1>
+      <p class="q-sub">另有 11 个 PR 在流转中，其中 2 个已经超过 5 天没人碰。</p>
+    </div>
+    <div id="q-mine"></div>
+    <div id="q-stale"></div>
+    <div id="q-rest"></div>
+  </div>
+</section>
+
+<!-- ═══ B ═══ -->
+<section class="panel fz" id="p-b">
+  <p class="note"><b>回答的问题：东西卡在哪个环节？</b> 列＝PR 真实生命周期，不是状态标签的堆砌。列头给出在此环节的中位停留时间——这才是能推动改进的数字。卡片底部一条热度条按停留时长横向生长，超期转红。</p>
+  <div class="f-wrap">
+    <div class="f-head">
+      <div>
+        <h2>流水线</h2>
+        <p>14 个开放 PR · 中位周期 2.6 天 · 本周合并 9 个</p>
+      </div>
+      <div class="f-filters">
+        <button class="chip" aria-pressed="true">全部</button>
+        <button class="chip" aria-pressed="false">我参与的</button>
+        <button class="chip" aria-pressed="false">仅超期</button>
+      </div>
+    </div>
+    <div class="f-cols" id="f-cols"></div>
+  </div>
+</section>
+
+<!-- ═══ C ═══ -->
+<section class="panel cz" id="p-c">
+  <p class="note"><b>回答的问题：团队的评审负载压在谁身上？</b> 面向 tech lead 的密集视图。人 × 状态矩阵一屏看完谁的 PR 堆积、谁在被反复要求修改；右侧「评审欠账」直接点名 A 欠 B 几天，这是看板和列表都表达不出来的关系数据。</p>
+  <div class="c-wrap">
+    <div class="c-head">
+      <div>
+        <h2>团队脉搏</h2>
+        <div class="sub">PLATFORM · 最近 14 天 · 数据 40 秒前刷新</div>
+      </div>
+      <div class="c-tiles">
+        <div class="tile"><div class="v">14</div><div class="k">开放</div></div>
+        <div class="tile"><div class="v warn">3</div><div class="k">等你评审</div></div>
+        <div class="tile"><div class="v bad">2</div><div class="k">超期</div></div>
+        <div class="tile"><div class="v">2.6<span style="font-size:13px">d</span></div><div class="k">中位周期</div></div>
+      </div>
+    </div>
+    <div class="c-grid">
+      <div>
+        <p class="c-panel-h">按作者 · 开放 PR 状态</p>
+        <table class="mtx">
+          <thead><tr><th style="width:34%">作者</th><th>开放 PR</th><th style="width:76px">最久</th></tr></thead>
+          <tbody id="c-mtx"></tbody>
+        </table>
+        <div class="legend">
+          <span><i class="s-app"></i>已批准</span>
+          <span><i class="s-chg"></i>要求修改</span>
+          <span><i class="s-req"></i>待评审</span>
+          <span><i class="s-stale"></i>超期</span>
+          <span><i class="s-drf"></i>草稿</span>
+        </div>
+        <p class="c-panel-h" style="margin-top:26px">停滞最久 · 建议今天处理</p>
+        <table class="mtx"><tbody id="c-old"></tbody></table>
+      </div>
+      <div>
+        <div class="c-side">
+          <p class="c-panel-h">评审欠账 · 谁在等谁</p>
+          <ul class="debt" id="c-debt"></ul>
+        </div>
+        <div class="c-side">
+          <p class="c-panel-h">合并吞吐 · 近 14 天</p>
+          <div class="spark" id="c-spark"></div>
+          <div style="font-size:10.5px;color:#6B7484">日均 1.9 个 · 相比上一周期 <span style="color:#4FA97A">+18%</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<script>
+const PRS = [
+  {repo:'acme/api-server', num:412, title:'Rework token refresh so expired sessions retry once', author:'lena', state:'req', wait:3.2, age:3.2, add:184, del:62, mine:true, draft:false},
+  {repo:'acme/web', num:1188, title:'Virtualize the activity feed list', author:'kai', state:'req', wait:1.1, age:1.1, add:96, del:14, mine:true, draft:false},
+  {repo:'acme/infra', num:77, title:'Pin the runner image and drop the apt install step', author:'rosa', state:'req', wait:0.4, age:0.4, add:22, del:41, mine:true, draft:false},
+  {repo:'acme/api-server', num:398, title:'Split the billing webhook handler into per-event modules', author:'dmitri', state:'chg', wait:7.4, age:9.1, add:612, del:340, mine:false, draft:false},
+  {repo:'acme/web', num:1140, title:'Migrate settings forms off the legacy validator', author:'lena', state:'req', wait:6.1, age:6.1, add:288, del:210, mine:false, draft:false},
+  {repo:'acme/web', num:1201, title:'Fix keyboard trap in the repo picker', author:'kai', state:'app', wait:0.6, age:1.4, add:34, del:9, mine:false, draft:false},
+  {repo:'acme/api-server', num:415, title:'Add cursor pagination to /events', author:'rosa', state:'app', wait:0.2, age:2.1, add:150, del:33, mine:false, draft:false},
+  {repo:'acme/infra', num:81, title:'Terraform module for the staging cache', author:'dmitri', state:'chg', wait:2.3, age:4.0, add:204, del:12, mine:false, draft:false},
+  {repo:'acme/web', num:1205, title:'Dark mode tokens for the chart palette', author:'nina', state:'req', wait:1.8, age:1.8, add:118, del:96, mine:false, draft:false},
+  {repo:'acme/docs', num:56, title:'Document the PAT scopes we actually need', author:'nina', state:'app', wait:0.3, age:0.9, add:71, del:8, mine:false, draft:false},
+  {repo:'acme/api-server', num:420, title:'Spike: replace the polling worker with a queue', author:'dmitri', state:'drf', wait:0.5, age:0.5, add:340, del:20, mine:false, draft:true},
+  {repo:'acme/web', num:1210, title:'Extract the toast system into its own package', author:'kai', state:'drf', wait:1.2, age:1.2, add:260, del:180, mine:false, draft:true},
+  {repo:'acme/infra', num:84, title:'Rotate the deploy key and update the docs', author:'rosa', state:'chg', wait:1.0, age:1.6, add:18, del:18, mine:false, draft:false},
+  {repo:'acme/docs', num:59, title:'Rewrite the onboarding page around the watchlist', author:'nina', state:'req', wait:2.9, age:2.9, add:145, del:220, mine:false, draft:false},
+];
+const HUE = {lena:'#7A6BC4',kai:'#3D7EA6',rosa:'#B8703A',dmitri:'#4E8B63',nina:'#B0537C'};
+const STALE = 5;
+const ini = n => n.slice(0,2).toUpperCase();
+const days = d => d < 1 ? Math.round(d*24)+' 小时' : d.toFixed(d<10?1:0)+' 天';
+
+/* ── A ── */
+const verb = {req:'请你评审',chg:'在等作者修改',app:'已批准，等合并',drf:'还是草稿'};
+function qItem(pr, quiet){
+  const pct = Math.min(100, pr.wait / STALE * 100);
+  const cls = pr.wait >= STALE ? 'bad' : pr.wait >= STALE*.6 ? 'warn' : '';
+  const state = pr.wait >= STALE ? `<span class="red">等待 ${days(pr.wait)}</span>`
+    : pr.state==='chg' ? `<span class="amber">要求修改</span>` : pr.state==='app' ? `<span class="green">已批准</span>` : `等待 ${days(pr.wait)}`;
+  return `<a class="q-item${quiet?' q-quiet':''}" href="#">
+    <div class="q-line"><span class="who">${pr.author}</span> <span class="verb">${verb[pr.state]}</span> ·
+      <span class="what">${pr.title}</span> <span class="repo">${pr.repo.split('/')[1]} #${pr.num}</span></div>
+    <div class="q-meta">${state}<span>+${pr.add} −${pr.del}</span><span>开启 ${days(pr.age)}</span></div>
+    <div class="q-meter ${cls}"><i style="width:${pct}%"></i><b style="left:100%"></b></div>
+  </a>`;
+}
+function sec(id, title, hint, items, quiet, empty){
+  document.getElementById(id).innerHTML = `<div class="q-sec">
+    <div class="q-sec-h"><h3>${title}</h3><span class="n">${hint}</span></div>
+    ${items.length ? items.map(p=>qItem(p,quiet)).join('') : `<p class="q-empty">${empty}</p>`}</div>`;
+}
+const mine = PRS.filter(p=>p.mine).sort((a,b)=>b.wait-a.wait);
+const stale = PRS.filter(p=>!p.mine && p.wait>=STALE).sort((a,b)=>b.wait-a.wait);
+const rest = PRS.filter(p=>!p.mine && p.wait<STALE).sort((a,b)=>b.wait-a.wait);
+sec('q-mine','等你评审',`${mine.length} 个 · 最久 ${days(mine[0].wait)}`, mine, false, '没有等你的评审。');
+sec('q-stale',`停滞超过 ${STALE} 天`,`${stale.length} 个`, stale, false, '没有停滞的 PR。');
+sec('q-rest','其余在流转',`${rest.length} 个`, rest, true, '');
+
+/* ── B ── */
+const COLS = [
+  {k:'drf', t:'草稿', med:'中位停留 1.4 天', hue:'#8A7FBF', tint:'#F2F0F7', edge:'#E3DFF0'},
+  {k:'req', t:'待评审', med:'中位停留 2.1 天', hue:'#4E86B4', tint:'#EDF2F7', edge:'#DCE6F0'},
+  {k:'chg', t:'要求修改', med:'中位停留 3.8 天', hue:'#C2685C', tint:'#F9F0EE', edge:'#F0DFDB'},
+  {k:'app', t:'已批准，待合并', med:'中位停留 0.4 天', hue:'#4E9B6B', tint:'#EDF5F0', edge:'#DCEAE2'},
+];
+document.getElementById('f-cols').innerHTML = COLS.map(c=>{
+  const list = PRS.filter(p=>p.state===c.k).sort((a,b)=>b.wait-a.wait);
+  return `<div class="f-col" style="--hue:${c.hue};--tint:${c.tint};--edge:${c.edge}">
+    <div class="f-col-h"><span class="dot"></span><h3>${c.t}</h3><span class="ct">${list.length}</span></div>
+    <div class="f-col-sub">${c.med}</div>
+    ${list.map(p=>{
+      const tot = p.add+p.del, hot = p.wait>=STALE;
+      return `<a class="card${hot?' hot':''}" href="#" style="--age:${Math.min(100,p.wait/STALE*100)}%">
+        <div class="card-top"><span class="card-repo">${p.repo.split('/')[1]}</span><span class="card-num">#${p.num}</span></div>
+        ${hot?'<span class="f-flag">停滞 '+days(p.wait)+'</span>':''}
+        <p class="card-t">${p.title}</p>
+        <div class="card-foot">
+          <span class="av" style="--av:${HUE[p.author]};background:${HUE[p.author]}">${ini(p.author)}</span>
+          <span class="card-who">${p.author}</span>
+          <span class="card-age"><span style="color:#4E9B6B">+${p.add}</span> <span style="color:#C2685C">−${p.del}</span> · ${days(p.wait)}</span></div>
+        <div class="heat"></div></a>`}).join('')}
+  </div>`}).join('');
+
+/* ── C ── */
+const authors = [...new Set(PRS.map(p=>p.author))];
+document.getElementById('c-mtx').innerHTML = authors.map(a=>{
+  const list = PRS.filter(p=>p.author===a).sort((x,y)=>y.wait-x.wait);
+  return `<tr><td><div class="who-cell"><span class="av" style="background:${HUE[a]}">${ini(a)}</span><span class="nm">${a}</span></div></td>
+    <td><div class="lane">${list.map(p=>`<span class="pchip ${p.wait>=STALE?'s-stale':'s-'+p.state}" title="#${p.num} ${p.title}">${p.state==='drf'?'D':''}</span>`).join('')}</div></td>
+    <td style="font-size:11px;color:${list[0].wait>=STALE?'#E0A33C':'#7A8494'}">${days(list[0].wait)}</td></tr>`;
+}).join('');
+
+document.getElementById('c-old').innerHTML = [...PRS].sort((a,b)=>b.wait-a.wait).slice(0,5).map(p=>
+  `<tr><td style="width:34%"><span style="color:#7A8494;font-size:11px">${p.repo.split('/')[1]} #${p.num}</span></td>
+   <td style="font-size:11.5px;color:#E7EBF1;font-family:var(--sans)">${p.title}</td>
+   <td style="width:76px;font-size:11px;color:${p.wait>=STALE?'#E0A33C':'#7A8494'}">${days(p.wait)}</td></tr>`).join('');
+
+document.getElementById('c-debt').innerHTML = [
+  ['你','lena',3.2,0],['你','kai',1.1,0],['你','rosa',0.4,0],
+  ['dmitri','nina',6.1,1],['rosa','dmitri',2.9,1],['nina','kai',0.6,1],
+].map(([a,b,d,ok])=>`<li><span class="nm">${a}</span><span class="arw">欠</span><span class="nm">${b}</span>
+  <span class="d${d<2?' ok':''}">${days(d)}</span></li>`).join('');
+
+document.getElementById('c-spark').innerHTML =
+  [2,0,3,1,4,2,1,0,2,5,3,1,2,3].map(v=>`<i class="${v>=3?'hi':''}" style="height:${Math.max(8,v/5*100)}%"></i>`).join('');
+
+/* ── tabs ── */
+document.querySelectorAll('.tab').forEach(t=>t.onclick=()=>{
+  document.querySelectorAll('.tab').forEach(x=>x.setAttribute('aria-selected', x===t));
+  document.querySelectorAll('.panel').forEach(p=>p.classList.toggle('on', p.id==='p-'+t.dataset.p));
+  scrollTo(0,0);
+});
+</script>
+</body>
+</html>
