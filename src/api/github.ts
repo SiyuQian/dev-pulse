@@ -243,3 +243,47 @@ export async function fetchViewerLogin(token: string): Promise<string> {
   const data = await graphql<{ viewer: { login: string } }>(token, 'query { viewer { login } }', {})
   return data.viewer.login
 }
+
+export interface ViewerRepo {
+  nameWithOwner: string
+  isPrivate: boolean
+  isArchived: boolean
+}
+
+const VIEWER_REPOS_QUERY = /* GraphQL */ `
+  query ViewerRepos($first: Int!, $after: String) {
+    viewer {
+      repositories(
+        first: $first
+        after: $after
+        affiliations: [OWNER, COLLABORATOR, ORGANIZATION_MEMBER]
+        orderBy: { field: PUSHED_AT, direction: DESC }
+      ) {
+        pageInfo { hasNextPage endCursor }
+        nodes { nameWithOwner isPrivate isArchived }
+      }
+    }
+  }
+`
+
+// Repos the token can see, most-recently-pushed first. Paginates a few pages
+// so large accounts still surface their active repos without unbounded fetches.
+export async function fetchViewerRepos(token: string): Promise<ViewerRepo[]> {
+  const repos: ViewerRepo[] = []
+  let after: string | null = null
+  for (let page = 0; page < 5; page++) {
+    const data: {
+      viewer: {
+        repositories: {
+          pageInfo: { hasNextPage: boolean; endCursor: string | null }
+          nodes: ViewerRepo[]
+        }
+      }
+    } = await graphql(token, VIEWER_REPOS_QUERY, { first: 100, after })
+    const { nodes, pageInfo } = data.viewer.repositories
+    repos.push(...nodes)
+    if (!pageInfo.hasNextPage) break
+    after = pageInfo.endCursor
+  }
+  return repos
+}

@@ -1,7 +1,7 @@
-import { useEffect, useState, type FormEvent } from 'react'
+import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAppState } from '../../state/AppState'
-import { useViewer } from '../../api/queries'
+import { useViewer, useViewerRepos } from '../../api/queries'
 import { decodeShareFragment, encodeShareFragment, isLogin, isRepoRef } from '../../storage/config'
 import { Panel } from '../shared/ui'
 
@@ -58,13 +58,135 @@ function ListEditor({
   )
 }
 
+function RepoMultiSelect({
+  items, onChange, options, loading, error, disabled, hue,
+}: {
+  items: string[]
+  onChange: (items: string[]) => void
+  options: string[]
+  loading: boolean
+  error: boolean
+  disabled: boolean
+  hue: string
+}) {
+  const [open, setOpen] = useState(false)
+  const [query, setQuery] = useState('')
+  const [invalid, setInvalid] = useState(false)
+  const rootRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!open) return
+    function onDocClick(e: MouseEvent) {
+      if (rootRef.current && !rootRef.current.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener('mousedown', onDocClick)
+    return () => document.removeEventListener('mousedown', onDocClick)
+  }, [open])
+
+  const selected = new Set(items)
+  const q = query.trim().toLowerCase()
+  const filtered = options.filter((o) => o.toLowerCase().includes(q))
+  const exactInOptions = options.some((o) => o.toLowerCase() === q)
+  const canAddManual = q.length > 0 && !exactInOptions
+
+  function toggle(repo: string) {
+    onChange(selected.has(repo) ? items.filter((i) => i !== repo) : [...items, repo])
+  }
+
+  function addManual() {
+    const value = query.trim()
+    if (!value) return
+    if (!isRepoRef(value)) {
+      setInvalid(true)
+      return
+    }
+    setInvalid(false)
+    if (!selected.has(value)) onChange([...items, value])
+    setQuery('')
+  }
+
+  return (
+    <Panel title="Watched repositories" hue={hue} count={items.length}>
+      <div className="ms" ref={rootRef}>
+        <button
+          type="button"
+          className="ms-control"
+          disabled={disabled}
+          onClick={() => setOpen((v) => !v)}
+          aria-haspopup="listbox"
+          aria-expanded={open}
+        >
+          <span className="ms-control-label">
+            {disabled
+              ? 'Save a token to pick from your repositories'
+              : items.length > 0
+                ? `${items.length} selected`
+                : 'Select repositories…'}
+          </span>
+          <span className="ms-caret" aria-hidden="true">▾</span>
+        </button>
+
+        {open && !disabled && (
+          <div className="ms-menu" role="listbox" aria-multiselectable="true">
+            <input
+              className="ms-search"
+              autoFocus
+              value={query}
+              placeholder="Search or type owner/name…"
+              onChange={(e) => { setQuery(e.target.value); setInvalid(false) }}
+              onKeyDown={(e) => { if (e.key === 'Enter' && canAddManual) { e.preventDefault(); addManual() } }}
+              aria-label="Search repositories"
+            />
+            <div className="ms-options">
+              {loading && <p className="ms-status">Loading your repositories…</p>}
+              {error && <p className="ms-status error">Couldn’t load repositories — type owner/name to add manually.</p>}
+              {!loading && !error && filtered.length === 0 && !canAddManual && (
+                <p className="ms-status">No matching repositories.</p>
+              )}
+              {filtered.map((repo) => (
+                <label key={repo} className="ms-option" role="option" aria-selected={selected.has(repo)}>
+                  <input type="checkbox" checked={selected.has(repo)} onChange={() => toggle(repo)} />
+                  <span>{repo}</span>
+                </label>
+              ))}
+              {canAddManual && (
+                <button type="button" className="ms-add" onClick={addManual}>
+                  {isRepoRef(query.trim()) ? `Add “${query.trim()}”` : 'Add… (expects owner/name)'}
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+      {invalid
+        ? <p className="field-error">Invalid format — expected owner/name, e.g. vercel/next.js</p>
+        : <p className="field-hint">Pick from repositories your token can see, or type any owner/name.</p>}
+      {items.length > 0 && (
+        <ul className="chip-list">
+          {items.map((item) => (
+            <li key={item} className="chip">
+              {item}
+              <button aria-label={`Remove ${item}`} onClick={() => onChange(items.filter((i) => i !== item))}>×</button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </Panel>
+  )
+}
+
 export function SettingsPage() {
   const { token, setToken, config, setConfig } = useAppState()
   const [tokenDraft, setTokenDraft] = useState(token)
   const [copied, setCopied] = useState(false)
   const [pendingImport, setPendingImport] = useState<ReturnType<typeof decodeShareFragment>>(null)
   const viewer = useViewer(token)
+  const viewerRepos = useViewerRepos(token)
   const navigate = useNavigate()
+
+  const repoOptions = (viewerRepos.data ?? [])
+    .filter((r) => !r.isArchived)
+    .map((r) => r.nameWithOwner)
 
   useEffect(() => {
     const stashed = sessionStorage.getItem('devpulse:pending-import')
@@ -156,13 +278,13 @@ export function SettingsPage() {
         )}
       </Panel>
 
-      <ListEditor
-        label="Watched repositories"
-        placeholder="owner/name"
+      <RepoMultiSelect
         items={config.repos}
-        validate={isRepoRef}
         onChange={(repos) => setConfig({ ...config, repos })}
-        hint="owner/name, e.g. vercel/next.js"
+        options={repoOptions}
+        loading={viewerRepos.isLoading}
+        error={Boolean(viewerRepos.error)}
+        disabled={!token}
         hue="var(--stage-review)"
       />
 

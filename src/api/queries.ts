@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { fetchMergedPrs, fetchOpenPrs, fetchViewerLogin, GitHubError } from './github'
+import { fetchMergedPrs, fetchOpenPrs, fetchViewerLogin, fetchViewerRepos, GitHubError } from './github'
 import type { WatchConfig } from '../storage/config'
 
 export function useOpenPrs(token: string, config: WatchConfig) {
@@ -32,5 +32,16 @@ export function useViewer(token: string) {
     enabled: Boolean(token),
     staleTime: Infinity,
     retry: false,
+  })
+}
+
+export function useViewerRepos(token: string) {
+  return useQuery({
+    queryKey: ['viewerRepos', token.slice(-8)],
+    queryFn: () => fetchViewerRepos(token),
+    enabled: Boolean(token),
+    staleTime: 10 * 60 * 1000,
+    retry: (failureCount, error) =>
+      failureCount < 2 && !(error instanceof GitHubError && error.status === 401),
   })
 }
