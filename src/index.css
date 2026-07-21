@@ -347,6 +347,65 @@ label.inline-form { color: var(--text-dim); font-size: 13px; }
 .chip button { background: none; color: var(--text-faint); padding: 0 0.3rem; font-size: 14px; }
 .chip button:hover { color: var(--bad); filter: none; }
 
+/* Multi-select combobox (Watched repositories) */
+.ms { position: relative; margin-top: 0.7rem; }
+.ms-control {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  padding: 0.5rem 0.7rem;
+  font-size: 13px;
+  text-align: left;
+}
+.ms-control:hover:not(:disabled) { filter: none; border-color: var(--text-faint); }
+.ms-control-label { color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ms-caret { color: var(--text-faint); font-size: 11px; }
+.ms-menu {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+  padding: 0.4rem;
+}
+.ms-search { width: 100%; margin-bottom: 0.4rem; }
+.ms-options { max-height: 260px; overflow-y: auto; display: flex; flex-direction: column; }
+.ms-option {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.35rem 0.45rem;
+  border-radius: 6px;
+  font-size: 13px;
+  font-family: var(--mono);
+  cursor: pointer;
+}
+.ms-option:hover { background: var(--surface-2, #f2efe9); }
+.ms-option input { width: auto; margin: 0; flex: none; }
+.ms-status { color: var(--text-faint); font-size: 12px; margin: 0.4rem 0.45rem; }
+.ms-status.error { color: var(--bad); }
+.ms-add {
+  width: 100%;
+  text-align: left;
+  background: var(--surface);
+  color: var(--accent);
+  border: none;
+  padding: 0.4rem 0.45rem;
+  font-size: 12.5px;
+  border-radius: 6px;
+}
+.ms-add:hover { filter: none; background: var(--surface-2, #f2efe9); }
+
 .import-banner {
   background: var(--surface);
   border: 1px solid var(--accent);
