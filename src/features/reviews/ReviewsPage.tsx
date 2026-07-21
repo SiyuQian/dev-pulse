@@ -62,7 +62,7 @@ export function ReviewsPage() {
   const awaitingMedian = median(awaitingFirstReview.map((pr) => daysSince(pr.updatedAt)))
 
   return (
-    <div>
+    <div className="fade-in">
       <div className="page-head">
         <h2>Review activity</h2>
         <p>

@@ -19,6 +19,12 @@ export function formatHours(hours: number): string {
   return hours < 24 ? `${hours.toFixed(1)}h` : `${(hours / 24).toFixed(1)}d`
 }
 
+export function formatCompact(n: number): string {
+  if (n >= 10_000) return `${(n / 1000).toFixed(0)}k`
+  if (n >= 1000) return `${(n / 1000).toFixed(1)}k`
+  return `${n}`
+}
+
 export function median(values: number[]): number | null {
   if (values.length === 0) return null
   const sorted = [...values].sort((a, b) => a - b)

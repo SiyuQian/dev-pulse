@@ -97,7 +97,7 @@ export function BoardPage() {
   const staleCount = prs.filter((pr) => idleDays(pr) >= staleDays).length
 
   return (
-    <div>
+    <div className="fade-in">
       <div className="flow-head">
         <div>
           <h2>Pipeline</h2>
