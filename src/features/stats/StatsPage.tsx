@@ -56,7 +56,7 @@ export function StatsPage() {
   const maxAuthor = Math.max(1, ...authors.map(([, s]) => s.count))
 
   return (
-    <div>
+    <div className="fade-in">
       <div className="page-head">
         <h2>Trends</h2>
         <p>Merged pull requests over the last {RANGE_DAYS} days</p>
