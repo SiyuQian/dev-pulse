@@ -2,8 +2,9 @@ import { useOpenPrs, useViewer } from '../../api/queries'
 import { useAppState } from '../../state/AppState'
 
 /**
- * Identity, watchlist scope, and the two operational facts that matter when
+ * Watchlist scope, identity, and the two operational facts that matter when
  * this sits open all day: how fresh the data is, and how much quota is left.
+ * The wordmark lives in the rail, so it is deliberately absent here.
  */
 export function TopBar() {
   const { token, config } = useAppState()
@@ -19,9 +20,6 @@ export function TopBar() {
 
   return (
     <header className="top">
-      <h1>
-        <b>dev</b>·pulse
-      </h1>
       {scope.length > 0 && <span className="crumbs">{scope.join(' · ')}</span>}
       {viewer && <span className="crumbs">@{viewer}</span>}
 
