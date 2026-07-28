@@ -52,7 +52,12 @@ function buildItems(prs: PullRequest[], viewer: string | undefined, staleDays: n
       continue
     }
     if (pr.reviewDecision === 'CHANGES_REQUESTED') {
-      items.push({ pr, reason: 'changes', rank: 2, note: `your PR · changes requested ${formatDays(idle)} ago` })
+      items.push({
+        pr,
+        reason: 'changes',
+        rank: 2,
+        note: `your PR · changes requested ${formatDays(idle)} ago`,
+      })
       continue
     }
     if (idle >= staleDays && !pr.isDraft) {
@@ -92,7 +97,9 @@ export function AttentionStrip() {
       </div>
       {items.length === 0 ? (
         <p className="attn-clear">
-          {viewer ? 'Nothing is blocked on you right now.' : 'Save a valid token to see what is waiting on you.'}
+          {viewer
+            ? 'Nothing is blocked on you right now.'
+            : 'Save a valid token to see what is waiting on you.'}
         </p>
       ) : (
         <div className="attn-items">

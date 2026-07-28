@@ -18,7 +18,9 @@ import {
 // Tests run in node, so stand up the minimum localStorage the store needs.
 const store = new Map<string, string>()
 globalThis.localStorage = {
-  get length() { return store.size },
+  get length() {
+    return store.size
+  },
   key: (i: number) => [...store.keys()][i] ?? null,
   getItem: (k: string) => store.get(k) ?? null,
   setItem: (k: string, v: string) => void store.set(k, String(v)),
@@ -55,7 +57,12 @@ describe('share fragment', () => {
   })
 
   it('filters invalid entries on decode', () => {
-    const json = JSON.stringify({ version: 1, repos: ['ok/repo', 'bad repo!'], users: ['fine', 'not ok!'], staleDays: 3 })
+    const json = JSON.stringify({
+      version: 1,
+      repos: ['ok/repo', 'bad repo!'],
+      users: ['fine', 'not ok!'],
+      staleDays: 3,
+    })
     const b64 = btoa(json).replaceAll('+', '-').replaceAll('/', '_').replace(/=+$/, '')
     expect(decodeShareFragment('#config=' + b64)).toEqual({
       version: 1,
@@ -93,7 +100,12 @@ describe('profile store', () => {
 
   it('round-trips several accounts with per-account tokens and watchlists', () => {
     const work = createProfile('Work', config)
-    const personal = createProfile('Personal', { version: 1, repos: ['me/blog'], users: [], staleDays: 3 })
+    const personal = createProfile('Personal', {
+      version: 1,
+      repos: ['me/blog'],
+      users: [],
+      staleDays: 3,
+    })
     const saved: ProfileStore = { version: 2, activeId: personal.id, profiles: [work, personal] }
     saveProfiles(saved)
     saveTokens({ [work.id]: 'ghp_work', [personal.id]: 'ghp_personal' })
@@ -135,7 +147,9 @@ describe('profile store', () => {
   it('labels accounts by login when known, nickname otherwise', () => {
     expect(profileName({ label: 'Work', login: 'octocat' })).toBe('@octocat')
     expect(profileName({ label: 'Work' })).toBe('Work')
-    expect(nextAccountLabel([createProfile('Account 1'), createProfile('Account 2')])).toBe('Account 3')
+    expect(nextAccountLabel([createProfile('Account 1'), createProfile('Account 2')])).toBe(
+      'Account 3',
+    )
     expect(nextAccountLabel([createProfile('Work')])).toBe('Account 2')
   })
 })

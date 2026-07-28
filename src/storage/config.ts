@@ -119,7 +119,9 @@ export function loadProfiles(): ProfileStore {
       ? parsed.profiles.map(parseProfile).filter((p): p is Profile => p !== null)
       : []
     if (profiles.length === 0) return freshStore()
-    const activeId = profiles.some((p) => p.id === parsed.activeId) ? parsed.activeId! : profiles[0].id
+    const activeId = profiles.some((p) => p.id === parsed.activeId)
+      ? parsed.activeId!
+      : profiles[0].id
     return { version: 2, activeId, profiles }
   } catch {
     return freshStore()
@@ -162,10 +164,20 @@ export function isLogin(value: unknown): value is string {
 
 // Share config (never the token) via URL fragment: #config=<base64url JSON>
 export function encodeShareFragment(config: WatchConfig): string {
-  const payload = { version: config.version, repos: config.repos, users: config.users, staleDays: config.staleDays }
+  const payload = {
+    version: config.version,
+    repos: config.repos,
+    users: config.users,
+    staleDays: config.staleDays,
+  }
   const json = JSON.stringify(payload)
-  return '#config=' + btoa(String.fromCharCode(...new TextEncoder().encode(json)))
-    .replaceAll('+', '-').replaceAll('/', '_').replace(/=+$/, '')
+  return (
+    '#config=' +
+    btoa(String.fromCharCode(...new TextEncoder().encode(json)))
+      .replaceAll('+', '-')
+      .replaceAll('/', '_')
+      .replace(/=+$/, '')
+  )
 }
 
 export function decodeShareFragment(hash: string): WatchConfig | null {

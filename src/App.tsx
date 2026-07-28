@@ -13,9 +13,15 @@ import { ReviewsPage } from './features/reviews/ReviewsPage'
 
 // Board and Reviews are the triage path and load eagerly; the rest are visited
 // rarely enough that their code shouldn't sit in the first-paint bundle.
-const PeoplePage = lazy(() => import('./features/people/PeoplePage').then((m) => ({ default: m.PeoplePage })))
-const StatsPage = lazy(() => import('./features/stats/StatsPage').then((m) => ({ default: m.StatsPage })))
-const SettingsPage = lazy(() => import('./features/settings/SettingsPage').then((m) => ({ default: m.SettingsPage })))
+const PeoplePage = lazy(() =>
+  import('./features/people/PeoplePage').then((m) => ({ default: m.PeoplePage })),
+)
+const StatsPage = lazy(() =>
+  import('./features/stats/StatsPage').then((m) => ({ default: m.StatsPage })),
+)
+const SettingsPage = lazy(() =>
+  import('./features/settings/SettingsPage').then((m) => ({ default: m.SettingsPage })),
+)
 
 function Shell() {
   // Settings is configuration, not triage — the attention strip would only be noise there.

@@ -1,6 +1,12 @@
 import { useInfiniteQuery, useQuery, type QueryClient } from '@tanstack/react-query'
 import { useEffect, useMemo } from 'react'
-import { fetchMergedPrs, fetchOpenPrs, fetchViewerLogin, fetchViewerRepoPage, GitHubError } from './github'
+import {
+  fetchMergedPrs,
+  fetchOpenPrs,
+  fetchViewerLogin,
+  fetchViewerRepoPage,
+  GitHubError,
+} from './github'
 import type { ViewerRepo } from './github'
 import type { WatchConfig } from '../storage/config'
 
@@ -81,17 +87,20 @@ export interface ViewerReposResult {
  * picker is never gated on a serial cursor walk.
  */
 export function useViewerRepos(token: string): ViewerReposResult {
-  const { data, error, isLoading, hasNextPage, isFetchingNextPage, fetchNextPage } = useInfiniteQuery({
-    queryKey: ['viewerRepos', accountKey(token)],
-    queryFn: ({ pageParam }) => fetchViewerRepoPage(token, pageParam),
-    initialPageParam: null as string | null,
-    getNextPageParam: (last, pages) =>
-      pages.length >= VIEWER_REPO_PAGE_LIMIT ? undefined : last.nextCursor,
-    enabled: Boolean(token),
-    staleTime: 10 * 60 * 1000,
-    retry: (failureCount, error) =>
-      failureCount < 2 && !(error instanceof GitHubError && error.status === 401),
-  })
+  const { data, error, isLoading, hasNextPage, isFetchingNextPage, fetchNextPage } =
+    useInfiniteQuery({
+      queryKey: ['viewerRepos', accountKey(token)],
+      queryFn: ({ pageParam }) => fetchViewerRepoPage(token, pageParam),
+      initialPageParam: null as string | null,
+      getNextPageParam: (last, pages) =>
+        pages.length >= VIEWER_REPO_PAGE_LIMIT ? undefined : last.nextCursor,
+      enabled: Boolean(token),
+      staleTime: 10 * 60 * 1000,
+      // Named `cause` rather than `error`: this hook destructures an outer
+      // `error` above, and shadowing it trips no-shadow.
+      retry: (failureCount, cause) =>
+        failureCount < 2 && !(cause instanceof GitHubError && cause.status === 401),
+    })
 
   // Drive the backfill from the hook rather than the picker, so every consumer
   // gets the full list without having to know about pagination.

@@ -5,7 +5,15 @@ import { useAppState } from '../../state/AppState'
 import type { PullRequest } from '../../api/types'
 import { AgeBar, AvatarRow, Avatar, CiDot, Diff, Empty, SectionHead, Seg, Tag } from '../shared/ui'
 import { formatDays, median } from '../shared/format'
-import { STAGES, ageDays, ciFailing, idleDays, repoShort, stageOf, type StageKey } from '../shared/prs'
+import {
+  STAGES,
+  ageDays,
+  ciFailing,
+  idleDays,
+  repoShort,
+  stageOf,
+  type StageKey,
+} from '../shared/prs'
 
 type Filter = 'all' | 'mine' | 'idle' | 'ci'
 
@@ -92,7 +100,12 @@ export function BoardPage() {
   const visible = useMemo(() => {
     const q = query.trim().toLowerCase()
     return allRows.filter((row) => {
-      if (q && !`${row.pr.title} ${row.pr.repo} ${row.pr.author} #${row.pr.number}`.toLowerCase().includes(q)) {
+      if (
+        q &&
+        !`${row.pr.title} ${row.pr.repo} ${row.pr.author} #${row.pr.number}`
+          .toLowerCase()
+          .includes(q)
+      ) {
         return false
       }
       if (filter === 'mine') return row.isMine || row.needsMyReview
@@ -182,7 +195,9 @@ export function BoardPage() {
                     <span className="swatch" style={{ background: group.hue }} />
                     {group.label}
                     <span className="c">{group.rows.length}</span>
-                    {groupMedian !== null && <span className="c">median idle {formatDays(groupMedian)}</span>}
+                    {groupMedian !== null && (
+                      <span className="c">median idle {formatDays(groupMedian)}</span>
+                    )}
                   </th>
                 </tr>
                 {group.rows.map((row) => {
@@ -203,7 +218,8 @@ export function BoardPage() {
                           {row.pr.title}
                         </a>
                         <span className="slug">
-                          {repoShort(row.pr.repo)} #{row.pr.number} · opened {formatDays(ageDays(row.pr))} ago
+                          {repoShort(row.pr.repo)} #{row.pr.number} · opened{' '}
+                          {formatDays(ageDays(row.pr))} ago
                           {row.needsMyReview && <Tag kind="you">yours to review</Tag>}
                         </span>
                       </td>

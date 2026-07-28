@@ -3,7 +3,17 @@ import { Link } from 'react-router-dom'
 import { useMergedPrs } from '../../api/queries'
 import { useAppState } from '../../state/AppState'
 import {
-  Bars, Cell, Empty, Grid, LoadList, LoadRow, Queue, QueueRow, SectionHead, Seg, Stat,
+  Bars,
+  Cell,
+  Empty,
+  Grid,
+  LoadList,
+  LoadRow,
+  Queue,
+  QueueRow,
+  SectionHead,
+  Seg,
+  Stat,
 } from '../shared/ui'
 import { formatCompact, formatHours, median, percentile, signed } from '../shared/format'
 
@@ -45,13 +55,20 @@ export function StatsPage() {
   if (isPending) return <Empty>Loading merge history…</Empty>
 
   const windowSeg = (
-    <Seg label="Window" value={days} options={WINDOWS.map((w) => ({ value: w, label: `${w}d` }))} onChange={setDays} />
+    <Seg
+      label="Window"
+      value={days}
+      options={WINDOWS.map((w) => ({ value: w, label: `${w}d` }))}
+      onChange={setDays}
+    />
   )
 
   if (merged.length === 0) {
     return (
       <div className="fade-in">
-        <SectionHead title="Trends" sub={`merged pull requests · ${days} days`}>{windowSeg}</SectionHead>
+        <SectionHead title="Trends" sub={`merged pull requests · ${days} days`}>
+          {windowSeg}
+        </SectionHead>
         <Empty>No PRs merged in the last {days} days for the watched repos and people.</Empty>
       </div>
     )
@@ -69,7 +86,10 @@ export function StatsPage() {
   const prevMedian = prevWeek ? median(prevWeek.items.map((pr) => pr.cycleTimeHours)) : null
   const cycleTrend = lastMedian !== null && prevMedian !== null ? lastMedian - prevMedian : null
 
-  const byAuthor = new Map<string, { count: number; additions: number; deletions: number; cycles: number[] }>()
+  const byAuthor = new Map<
+    string,
+    { count: number; additions: number; deletions: number; cycles: number[] }
+  >()
   for (const pr of merged) {
     const entry = byAuthor.get(pr.author) ?? { count: 0, additions: 0, deletions: 0, cycles: [] }
     entry.count += 1
@@ -95,7 +115,9 @@ export function StatsPage() {
 
   return (
     <div className="fade-in">
-      <SectionHead title="Trends" sub={`${merged.length} merged · last ${days} days`}>{windowSeg}</SectionHead>
+      <SectionHead title="Trends" sub={`${merged.length} merged · last ${days} days`}>
+        {windowSeg}
+      </SectionHead>
 
       <Grid cols={4}>
         <Cell title="Merged" note={`${(merged.length / (days / 7)).toFixed(1)} per week`}>
@@ -103,7 +125,9 @@ export function StatsPage() {
             value={merged.length}
             unit="PRs"
             delta={
-              countTrend === null ? undefined : `last wk ${lastWeek.items.length} · ${signed(countTrend)} on prev`
+              countTrend === null
+                ? undefined
+                : `last wk ${lastWeek.items.length} · ${signed(countTrend)} on prev`
             }
             tone={countTrend === null || countTrend === 0 ? 'flat' : countTrend > 0 ? 'up' : 'down'}
           />
@@ -111,15 +135,30 @@ export function StatsPage() {
         <Cell title="Median cycle time" note="open → merge">
           <Stat
             value={formatHours(medianCycle)}
-            delta={cycleTrend === null ? undefined : `${signed(Math.round(cycleTrend), 'h')} on prev week`}
-            tone={cycleTrend === null || Math.round(cycleTrend) === 0 ? 'flat' : cycleTrend < 0 ? 'up' : 'down'}
+            delta={
+              cycleTrend === null
+                ? undefined
+                : `${signed(Math.round(cycleTrend), 'h')} on prev week`
+            }
+            tone={
+              cycleTrend === null || Math.round(cycleTrend) === 0
+                ? 'flat'
+                : cycleTrend < 0
+                  ? 'up'
+                  : 'down'
+            }
           />
         </Cell>
         <Cell title="p90 cycle time" note="the long tail is what hurts">
           <Stat value={formatHours(p90)} />
         </Cell>
         <Cell title="Median diff" note="lines changed per merged PR">
-          <Stat value={formatCompact(Math.round(median(merged.map((pr) => pr.additions + pr.deletions)) ?? 0))} unit="lines" />
+          <Stat
+            value={formatCompact(
+              Math.round(median(merged.map((pr) => pr.additions + pr.deletions)) ?? 0),
+            )}
+            unit="lines"
+          />
         </Cell>
       </Grid>
 
@@ -172,7 +211,10 @@ export function StatsPage() {
             ))}
           </LoadList>
         </Cell>
-        <Cell title="Recently merged" note={merged.length > 15 ? `newest 15 of ${merged.length}` : 'newest first'}>
+        <Cell
+          title="Recently merged"
+          note={merged.length > 15 ? `newest 15 of ${merged.length}` : 'newest first'}
+        >
           <Queue empty="Nothing merged yet.">
             {merged.slice(0, 15).map((pr) => (
               <QueueRow

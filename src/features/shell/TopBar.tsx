@@ -15,7 +15,7 @@ export function TopBar() {
   // Pages keep rendering cached rows when a refetch fails, so the freshness
   // indicator is the one place that has to admit the data is no longer live.
   // A rehydrated error survives JSON as a bare object, hence the fallback.
-  const staleError = data && error ? (error.message || 'could not reach GitHub') : null
+  const staleError = data && error ? error.message || 'could not reach GitHub' : null
   const updatedAt = new Date(dataUpdatedAt)
   const updatedLabel = updatedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
   const rate = data?.rateLimit
@@ -35,7 +35,11 @@ export function TopBar() {
           title={staleError ? `Last refresh failed: ${staleError}` : updatedAt.toLocaleTimeString()}
         >
           <i className={`pulse${isFetching ? ' busy' : staleError ? ' stale' : ''}`} />
-          {isFetching ? 'syncing' : staleError ? `stale · ${updatedLabel}` : `updated ${updatedLabel}`}
+          {isFetching
+            ? 'syncing'
+            : staleError
+              ? `stale · ${updatedLabel}`
+              : `updated ${updatedLabel}`}
         </span>
       )}
 

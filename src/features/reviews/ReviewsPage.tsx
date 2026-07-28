@@ -2,7 +2,17 @@ import { Link } from 'react-router-dom'
 import { useOpenPrs, useViewer } from '../../api/queries'
 import { useAppState } from '../../state/AppState'
 import type { PullRequest } from '../../api/types'
-import { Cell, Empty, Grid, LoadList, LoadRow, Queue, QueueRow, SectionHead, Stat } from '../shared/ui'
+import {
+  Cell,
+  Empty,
+  Grid,
+  LoadList,
+  LoadRow,
+  Queue,
+  QueueRow,
+  SectionHead,
+  Stat,
+} from '../shared/ui'
 import { daysSince, formatDays, median } from '../shared/format'
 import { idleDays } from '../shared/prs'
 
@@ -56,7 +66,9 @@ export function ReviewsPage() {
       pr.reviewDecision !== 'CHANGES_REQUESTED' &&
       pr.requestedReviewers.length > 0,
   )
-  const unassigned = prs.filter((pr) => pr.requestedReviewers.length === 0 && pr.reviewDecision !== 'APPROVED')
+  const unassigned = prs.filter(
+    (pr) => pr.requestedReviewers.length === 0 && pr.reviewDecision !== 'APPROVED',
+  )
   const approved = prs.filter((pr) => pr.reviewDecision === 'APPROVED')
 
   // Outstanding review requests per person — the load that exists right now,
@@ -75,30 +87,60 @@ export function ReviewsPage() {
 
   return (
     <div className="fade-in">
-      <SectionHead title="Review load" sub={`${prs.length} PRs in review · ${totalRequests} outstanding requests`} />
+      <SectionHead
+        title="Review load"
+        sub={`${prs.length} PRs in review · ${totalRequests} outstanding requests`}
+      />
 
       <Grid cols={4}>
-        <Cell title="Your queue" note={myOldest === null ? 'nothing assigned' : `oldest ${formatDays(myOldest)}`}>
+        <Cell
+          title="Your queue"
+          note={myOldest === null ? 'nothing assigned' : `oldest ${formatDays(myOldest)}`}
+        >
           <Stat value={needsMe.length} unit="to review" mine={needsMe.length > 0} />
         </Cell>
-        <Cell title="Awaiting first review" note={awaitingMedian === null ? 'none waiting' : `median wait ${formatDays(awaitingMedian)}`}>
+        <Cell
+          title="Awaiting first review"
+          note={
+            awaitingMedian === null ? 'none waiting' : `median wait ${formatDays(awaitingMedian)}`
+          }
+        >
           <Stat value={awaitingFirst.length} unit="PRs" />
         </Cell>
         <Cell title="No reviewer assigned" note="nobody has been asked yet">
-          <Stat value={unassigned.length} unit="PRs" tone={unassigned.length > 0 ? 'down' : 'flat'} />
+          <Stat
+            value={unassigned.length}
+            unit="PRs"
+            tone={unassigned.length > 0 ? 'down' : 'flat'}
+          />
         </Cell>
-        <Cell title="Approved, unmerged" note={approvedOldest === null ? 'none waiting' : `oldest ${formatDays(approvedOldest)}`}>
+        <Cell
+          title="Approved, unmerged"
+          note={approvedOldest === null ? 'none waiting' : `oldest ${formatDays(approvedOldest)}`}
+        >
           <Stat value={approved.length} unit="ready" />
         </Cell>
       </Grid>
 
       <Grid cols={2}>
-        <Cell title="Needs your review" note={viewer ? `assigned to @${viewer}` : 'save a valid token to see yours'}>
-          <Queue empty={viewer ? 'Nothing waiting on you. 🎉' : 'Save a valid token to see PRs assigned to you.'}>
+        <Cell
+          title="Needs your review"
+          note={viewer ? `assigned to @${viewer}` : 'save a valid token to see yours'}
+        >
+          <Queue
+            empty={
+              viewer
+                ? 'Nothing waiting on you. 🎉'
+                : 'Save a valid token to see PRs assigned to you.'
+            }
+          >
             {rows(needsMe, staleDays)}
           </Queue>
         </Cell>
-        <Cell title="Outstanding requests per person" note={`${reviewerLoad.length} people carrying ${totalRequests} requests`}>
+        <Cell
+          title="Outstanding requests per person"
+          note={`${reviewerLoad.length} people carrying ${totalRequests} requests`}
+        >
           {reviewerLoad.length === 0 ? (
             <p className="cell-empty">No outstanding review requests.</p>
           ) : (
@@ -120,7 +162,9 @@ export function ReviewsPage() {
 
       <Grid cols={3}>
         <Cell title="Blocked on author" note="changes requested, oldest first">
-          <Queue empty="No PRs blocked on author changes.">{rows(changesRequested, staleDays)}</Queue>
+          <Queue empty="No PRs blocked on author changes.">
+            {rows(changesRequested, staleDays)}
+          </Queue>
         </Cell>
         <Cell title="Nobody asked yet" note="open PRs with no reviewer, oldest first">
           <Queue empty="Every open PR has a reviewer.">{rows(unassigned, staleDays)}</Queue>
