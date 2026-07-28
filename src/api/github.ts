@@ -12,7 +12,11 @@ export class GitHubError extends Error {
   }
 }
 
-async function graphql<T>(token: string, query: string, variables: Record<string, unknown>): Promise<T> {
+async function graphql<T>(
+  token: string,
+  query: string,
+  variables: Record<string, unknown>,
+): Promise<T> {
   if (!token) throw new GitHubError('No GitHub token configured')
   const res = await fetch(GRAPHQL_URL, {
     method: 'POST',
@@ -23,7 +27,10 @@ async function graphql<T>(token: string, query: string, variables: Record<string
     body: JSON.stringify({ query, variables }),
   })
   if (!res.ok) {
-    throw new GitHubError(res.status === 401 ? 'Invalid or expired token' : `GitHub API error (${res.status})`, res.status)
+    throw new GitHubError(
+      res.status === 401 ? 'Invalid or expired token' : `GitHub API error (${res.status})`,
+      res.status,
+    )
   }
   const body = (await res.json()) as { data?: T; errors?: { message: string; type?: string }[] }
   if (body.errors?.length) {
@@ -72,23 +79,41 @@ const SEARCH_PRS_QUERY = /* GraphQL */ `
           additions
           deletions
           reviewDecision
-          author { login }
-          repository { nameWithOwner }
+          author {
+            login
+          }
+          repository {
+            nameWithOwner
+          }
           reviewRequests(first: 10) {
             nodes {
               requestedReviewer {
-                ... on User { login }
-                ... on Team { name }
+                ... on User {
+                  login
+                }
+                ... on Team {
+                  name
+                }
               }
             }
           }
           commits(last: 1) {
-            nodes { commit { statusCheckRollup { state } } }
+            nodes {
+              commit {
+                statusCheckRollup {
+                  state
+                }
+              }
+            }
           }
         }
       }
     }
-    rateLimit { remaining limit resetAt }
+    rateLimit {
+      remaining
+      limit
+      resetAt
+    }
   }
 `
 
@@ -119,13 +144,21 @@ export interface OpenPrsResult {
 }
 
 // One search query covers repos + authors; GitHub ORs multiple repo:/author: qualifiers of the same kind.
-export function buildSearchQuery(repos: string[], users: string[], extra = 'is:pr is:open'): string {
+export function buildSearchQuery(
+  repos: string[],
+  users: string[],
+  extra = 'is:pr is:open',
+): string {
   const parts = [extra, ...repos.map((r) => `repo:${r}`)]
   if (users.length > 0 && repos.length === 0) parts.push(...users.map((u) => `author:${u}`))
   return parts.join(' ')
 }
 
-export async function fetchOpenPrs(token: string, repos: string[], users: string[]): Promise<OpenPrsResult> {
+export async function fetchOpenPrs(
+  token: string,
+  repos: string[],
+  users: string[],
+): Promise<OpenPrsResult> {
   // repo: and author: qualifiers AND together across kinds, so when both are set
   // we run two searches (watched repos, watched authors) and merge.
   const queries: string[] = []
@@ -177,8 +210,12 @@ const SEARCH_MERGED_QUERY = /* GraphQL */ `
           mergedAt
           additions
           deletions
-          author { login }
-          repository { nameWithOwner }
+          author {
+            login
+          }
+          repository {
+            nameWithOwner
+          }
         }
       }
     }
@@ -207,12 +244,16 @@ export async function fetchMergedPrs(
 ): Promise<MergedPr[]> {
   const since = sinceIso.slice(0, 10)
   const queries: string[] = []
-  if (repos.length > 0) queries.push(`is:pr is:merged merged:>=${since} ${repos.map((r) => `repo:${r}`).join(' ')}`)
-  if (users.length > 0) queries.push(`is:pr is:merged merged:>=${since} ${users.map((u) => `author:${u}`).join(' ')}`)
+  if (repos.length > 0)
+    queries.push(`is:pr is:merged merged:>=${since} ${repos.map((r) => `repo:${r}`).join(' ')}`)
+  if (users.length > 0)
+    queries.push(`is:pr is:merged merged:>=${since} ${users.map((u) => `author:${u}`).join(' ')}`)
   if (queries.length === 0) return []
 
   const results = await Promise.all(
-    queries.map((q) => graphql<{ search: { nodes: MergedPrNode[] } }>(token, SEARCH_MERGED_QUERY, { q, first: 100 })),
+    queries.map((q) =>
+      graphql<{ search: { nodes: MergedPrNode[] } }>(token, SEARCH_MERGED_QUERY, { q, first: 100 }),
+    ),
   )
   const seen = new Set<string>()
   const prs: MergedPr[] = []
@@ -231,7 +272,8 @@ export async function fetchMergedPrs(
         mergedAt: node.mergedAt,
         additions: node.additions,
         deletions: node.deletions,
-        cycleTimeHours: (new Date(node.mergedAt).getTime() - new Date(node.createdAt).getTime()) / 3_600_000,
+        cycleTimeHours:
+          (new Date(node.mergedAt).getTime() - new Date(node.createdAt).getTime()) / 3_600_000,
       })
     }
   }
@@ -259,8 +301,15 @@ const VIEWER_REPOS_QUERY = /* GraphQL */ `
         affiliations: [OWNER, COLLABORATOR, ORGANIZATION_MEMBER]
         orderBy: { field: PUSHED_AT, direction: DESC }
       ) {
-        pageInfo { hasNextPage endCursor }
-        nodes { nameWithOwner isPrivate isArchived }
+        pageInfo {
+          hasNextPage
+          endCursor
+        }
+        nodes {
+          nameWithOwner
+          isPrivate
+          isArchived
+        }
       }
     }
   }

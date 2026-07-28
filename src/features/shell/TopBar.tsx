@@ -26,7 +26,9 @@ export function TopBar() {
       {dataUpdatedAt > 0 && (
         <span className="freshness" title={new Date(dataUpdatedAt).toLocaleTimeString()}>
           <i className={`pulse${isFetching ? ' busy' : ''}`} />
-          {isFetching ? 'syncing' : `updated ${new Date(dataUpdatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`}
+          {isFetching
+            ? 'syncing'
+            : `updated ${new Date(dataUpdatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`}
         </span>
       )}
 
