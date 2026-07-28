@@ -86,6 +86,7 @@ function RepoMultiSelect({
   onChange,
   options,
   loading,
+  backfilling,
   error,
   disabled,
 }: {
@@ -93,6 +94,8 @@ function RepoMultiSelect({
   onChange: (items: string[]) => void
   options: string[]
   loading: boolean
+  /** More pages still arriving — the list is usable but not yet complete. */
+  backfilling: boolean
   error: boolean
   disabled: boolean
 }) {
@@ -182,7 +185,9 @@ function RepoMultiSelect({
                 </p>
               )}
               {!loading && !error && filtered.length === 0 && !canAddManual && (
-                <p className="ms-status">No matching repositories.</p>
+                <p className="ms-status">
+                  {backfilling ? 'Still loading more repositories…' : 'No matching repositories.'}
+                </p>
               )}
               {filtered.map((repo) => (
                 <label
@@ -334,9 +339,7 @@ export function SettingsPage() {
   const active = accounts.find((a) => a.id === activeId) ?? accounts[0]
   const activeName = profileName(active)
 
-  const repoOptions = (viewerRepos.data ?? [])
-    .filter((r) => !r.isArchived)
-    .map((r) => r.nameWithOwner)
+  const repoOptions = viewerRepos.repos.filter((r) => !r.isArchived).map((r) => r.nameWithOwner)
 
   // Every field below edits the active account — follow a switch, don't keep the old draft.
   useEffect(() => {
@@ -478,6 +481,7 @@ export function SettingsPage() {
         onChange={(repos) => setConfig({ ...config, repos })}
         options={repoOptions}
         loading={viewerRepos.isLoading}
+        backfilling={viewerRepos.isBackfilling}
         error={Boolean(viewerRepos.error)}
         disabled={!token}
       />

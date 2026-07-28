@@ -1,4 +1,6 @@
+import { useQueryClient } from '@tanstack/react-query'
 import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react'
+import { removeAccountQueries } from '../api/queries'
 import {
   createProfile,
   defaultConfig,
@@ -49,6 +51,7 @@ function activeProfile(store: ProfileStore): Profile {
 export function AppStateProvider({ children }: { children: ReactNode }) {
   const [store, setStore] = useState(loadProfiles)
   const [tokens, setTokens] = useState(loadTokens)
+  const queryClient = useQueryClient()
 
   const commitStore = useCallback((next: ProfileStore) => {
     saveProfiles(next)
@@ -137,8 +140,11 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       commitStore({ version: 2, activeId: nextActive, profiles })
       const { [id]: _removed, ...rest } = tokens
       commitTokens(rest)
+      // The query cache is persisted, so forgetting the token is not enough:
+      // without this the removed account's PRs stay in localStorage until maxAge.
+      removeAccountQueries(queryClient, tokens[id] ?? '')
     },
-    [commitStore, commitTokens, store, tokens],
+    [commitStore, commitTokens, queryClient, store, tokens],
   )
 
   const accounts = useMemo(

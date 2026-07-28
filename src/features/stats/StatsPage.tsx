@@ -51,7 +51,7 @@ export function StatsPage() {
       </Empty>
     )
   }
-  if (error) return <Empty error>Failed to load stats: {error.message}</Empty>
+  if (error && !merged) return <Empty error>Failed to load stats: {error.message}</Empty>
   if (isPending) return <Empty>Loading merge history…</Empty>
 
   const windowSeg = (

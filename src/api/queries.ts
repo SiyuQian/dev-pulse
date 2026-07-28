@@ -1,11 +1,13 @@
-import { useQuery } from '@tanstack/react-query'
+import { useInfiniteQuery, useQuery, type QueryClient } from '@tanstack/react-query'
+import { useEffect, useMemo } from 'react'
 import {
   fetchMergedPrs,
   fetchOpenPrs,
   fetchViewerLogin,
-  fetchViewerRepos,
+  fetchViewerRepoPage,
   GitHubError,
 } from './github'
+import type { ViewerRepo } from './github'
 import type { WatchConfig } from '../storage/config'
 
 /**
@@ -21,6 +23,18 @@ function accountKey(token: string): string {
     hash = Math.imul(hash, 0x01000193)
   }
   return (hash >>> 0).toString(36)
+}
+
+/**
+ * Drops every cache entry scoped to a token. Removing an account deletes its
+ * PAT, so its board can never be refetched or invalidated again — and because
+ * the cache is persisted, its PRs would otherwise sit in localStorage until
+ * maxAge. Lives here because the fingerprint's position in the key does.
+ */
+export function removeAccountQueries(client: QueryClient, token: string): void {
+  if (!token) return
+  const key = accountKey(token)
+  client.removeQueries({ predicate: (query) => query.queryKey[1] === key })
 }
 
 export function useOpenPrs(token: string, config: WatchConfig) {
@@ -56,13 +70,45 @@ export function useViewer(token: string) {
   })
 }
 
-export function useViewerRepos(token: string) {
-  return useQuery({
-    queryKey: ['viewerRepos', accountKey(token)],
-    queryFn: () => fetchViewerRepos(token),
-    enabled: Boolean(token),
-    staleTime: 10 * 60 * 1000,
-    retry: (failureCount, error) =>
-      failureCount < 2 && !(error instanceof GitHubError && error.status === 401),
-  })
+/** Keeps a large account's repo walk bounded — 100 repos per page. */
+const VIEWER_REPO_PAGE_LIMIT = 5
+
+export interface ViewerReposResult {
+  repos: ViewerRepo[]
+  /** True only until the *first* page lands — later pages arrive silently. */
+  isLoading: boolean
+  isBackfilling: boolean
+  error: Error | null
+}
+
+/**
+ * Repos for the Settings picker. The first page resolves in one round trip and
+ * renders immediately; remaining pages are fetched in the background so the
+ * picker is never gated on a serial cursor walk.
+ */
+export function useViewerRepos(token: string): ViewerReposResult {
+  const { data, error, isLoading, hasNextPage, isFetchingNextPage, fetchNextPage } =
+    useInfiniteQuery({
+      queryKey: ['viewerRepos', accountKey(token)],
+      queryFn: ({ pageParam }) => fetchViewerRepoPage(token, pageParam),
+      initialPageParam: null as string | null,
+      getNextPageParam: (last, pages) =>
+        pages.length >= VIEWER_REPO_PAGE_LIMIT ? undefined : last.nextCursor,
+      enabled: Boolean(token),
+      staleTime: 10 * 60 * 1000,
+      // Named `cause` rather than `error`: this hook destructures an outer
+      // `error` above, and shadowing it trips no-shadow.
+      retry: (failureCount, cause) =>
+        failureCount < 2 && !(cause instanceof GitHubError && cause.status === 401),
+    })
+
+  // Drive the backfill from the hook rather than the picker, so every consumer
+  // gets the full list without having to know about pagination.
+  useEffect(() => {
+    if (hasNextPage && !isFetchingNextPage) void fetchNextPage()
+  }, [hasNextPage, isFetchingNextPage, fetchNextPage])
+
+  const repos = useMemo(() => data?.pages.flatMap((page) => page.repos) ?? [], [data])
+
+  return { repos, isLoading, isBackfilling: isFetchingNextPage, error }
 }

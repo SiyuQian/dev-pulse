@@ -53,7 +53,7 @@ export function ReviewsPage() {
       </Empty>
     )
   }
-  if (error) return <Empty error>Failed to load PRs: {error.message}</Empty>
+  if (error && !data) return <Empty error>Failed to load PRs: {error.message}</Empty>
   if (isPending || !data) return <Empty>Loading review activity…</Empty>
 
   const staleDays = config.staleDays
