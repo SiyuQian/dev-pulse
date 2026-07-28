@@ -197,6 +197,49 @@ kbd {
 .crumbs { font: 11px/1 var(--mono); color: var(--ink-3); letter-spacing: 0.05em; white-space: nowrap; }
 .top-spacer { flex: 1; }
 
+/* ── Account switcher ──────────────────────────────── */
+.acct { position: relative; flex: none; }
+.acct-control {
+  display: flex; align-items: center; gap: 8px;
+  background: var(--panel-2); border: 1px solid var(--line); border-radius: 100px;
+  padding: 3px 10px 3px 4px;
+  color: var(--ink-2); font: 500 11px/1 var(--mono); letter-spacing: 0.03em;
+}
+.acct-control:hover { color: var(--ink); border-color: var(--line-hi); filter: none; }
+.acct-label { max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.acct-blank { background: var(--line-hi); color: var(--ink-2); }
+/* an account that can't reach GitHub yet — the only colour this control carries */
+.acct-flag { width: 6px; height: 6px; border-radius: 50%; background: var(--warn); flex: none; }
+.acct-flag.bad { background: var(--bad); }
+.acct-count {
+  font: 500 9.5px/1 var(--mono); color: var(--ink-3);
+  border: 1px solid var(--line-hi); border-radius: 100px; padding: 2px 5px;
+}
+.acct-caret { color: var(--ink-3); }
+
+.acct-menu {
+  position: absolute; z-index: 40; top: calc(100% + 7px); left: 0; min-width: 290px;
+  background: var(--panel); border: 1px solid var(--line-hi); border-radius: 10px;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.55);
+  padding: 7px; display: flex; flex-direction: column; gap: 2px;
+}
+.acct-row {
+  display: flex; align-items: center; gap: 10px; width: 100%; text-align: left;
+  background: none; border: none; border-radius: 7px; padding: 7px 8px;
+  color: var(--ink-2); font: 400 11.5px/1 var(--mono);
+}
+.acct-row:hover { background: var(--panel-2); color: var(--ink); filter: none; }
+.acct-row.is-active { background: var(--panel-2); }
+.acct-row-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 5px; }
+.acct-row-name { color: var(--ink); display: flex; align-items: center; gap: 7px; min-width: 0; }
+.acct-row-name em { font-style: normal; font-size: 10px; color: var(--ink-3); }
+.acct-row-sub { font-size: 10.5px; color: var(--ink-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.acct-check { color: var(--signal); font-size: 11px; }
+.acct-actions {
+  display: flex; gap: 7px; margin-top: 5px; padding-top: 8px; border-top: 1px solid var(--line);
+}
+.acct-actions button { flex: 1; }
+
 .freshness { display: flex; align-items: center; gap: 7px; font: 11px/1 var(--mono); color: var(--ink-3); white-space: nowrap; }
 .freshness .pulse {
   width: 7px; height: 7px; border-radius: 50%; background: var(--ok);
@@ -531,6 +574,27 @@ tr:hover .avatar-row .avatar { box-shadow: 0 0 0 2px var(--panel); }
 }
 .import-banner p { margin: 0 0 4px; flex: 1 1 100%; font-size: 12.5px; color: var(--ink-2); }
 .import-banner strong { color: var(--ink); }
+
+/* account roster on Settings */
+.accounts {
+  list-style: none; margin: 14px 0 0; padding: 0;
+  display: flex; flex-direction: column; gap: 1px;
+  background: var(--line); border: 1px solid var(--line); border-radius: 8px; overflow: hidden;
+}
+.accounts li {
+  display: flex; align-items: center; gap: 11px; flex-wrap: wrap;
+  background: var(--panel-2); padding: 10px 12px;
+}
+.accounts li.is-active { background: color-mix(in srgb, var(--signal) 6%, var(--panel-2)); }
+.acct-cell-main { flex: 1; min-width: 170px; display: flex; flex-direction: column; gap: 6px; }
+.acct-cell-main input { width: 100%; padding: 0.28rem 0.5rem; font-size: 12px; }
+.acct-cell-sub { font: 10.5px/1.3 var(--mono); color: var(--ink-3); }
+.acct-cell-badge {
+  font: 600 9px/1 var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--signal);
+}
+.acct-cell-confirm { display: flex; gap: 6px; }
+.acct-cell-confirm button:first-child { background: var(--bad); color: #fff; }
+.accounts + button { margin-top: 14px; }
 
 /* multi-select */
 .ms { position: relative; }

@@ -33,6 +33,19 @@ export function Avatar({ login, title }: { login: string; title?: string }) {
   )
 }
 
+/**
+ * Avatar for one of your own accounts. Before a token has resolved to a login
+ * there is no image to fetch, so it falls back to initials of the nickname.
+ */
+export function AccountFace({ login, label }: { login?: string; label: string }) {
+  if (login) return <Avatar login={login} title={label} />
+  return (
+    <span className="avatar acct-blank" title={label} aria-hidden="true">
+      {label.replace(/[^a-zA-Z0-9]/g, '').slice(0, 2).toUpperCase() || '··'}
+    </span>
+  )
+}
+
 /** Overlapping avatar stack for requested reviewers. */
 export function AvatarRow({ logins, empty = '—' }: { logins: string[]; empty?: string }) {
   if (logins.length === 0) return <span className="mono-dim">{empty}</span>
