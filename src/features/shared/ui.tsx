@@ -1,11 +1,35 @@
+import { useState } from 'react'
 import type { CSSProperties, ReactNode } from 'react'
 import { avatarHue, formatCompact, formatDays } from './format'
 
+/**
+ * Real GitHub avatar, keyed off the login so it works for reviewers too (we only
+ * ever have their login). Falls back to the coloured initials tile for logins
+ * with no image — deleted accounts, `ghost`, or a blocked image request.
+ */
 export function Avatar({ login, title }: { login: string; title?: string }) {
+  const [failed, setFailed] = useState(false)
+  const hue = avatarHue(login)
+  if (failed || login === 'ghost') {
+    return (
+      <span className="avatar" style={{ background: hue }} title={title ?? login} aria-hidden="true">
+        {login.slice(0, 2).toUpperCase()}
+      </span>
+    )
+  }
   return (
-    <span className="avatar" style={{ background: avatarHue(login) }} title={title ?? login} aria-hidden="true">
-      {login.slice(0, 2).toUpperCase()}
-    </span>
+    <img
+      className="avatar"
+      style={{ background: hue }}
+      src={`https://github.com/${encodeURIComponent(login)}.png?size=48`}
+      srcSet={`https://github.com/${encodeURIComponent(login)}.png?size=96 2x`}
+      alt=""
+      loading="lazy"
+      decoding="async"
+      referrerPolicy="no-referrer"
+      title={title ?? login}
+      onError={() => setFailed(true)}
+    />
   )
 }
 
