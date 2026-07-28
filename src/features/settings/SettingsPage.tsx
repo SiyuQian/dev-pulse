@@ -3,10 +3,10 @@ import { useNavigate } from 'react-router-dom'
 import { useAppState } from '../../state/AppState'
 import { useViewer, useViewerRepos } from '../../api/queries'
 import { decodeShareFragment, encodeShareFragment, isLogin, isRepoRef } from '../../storage/config'
-import { Panel } from '../shared/ui'
+import { Cell } from '../shared/ui'
 
 function ListEditor({
-  label, placeholder, items, validate, onChange, hint, hue,
+  label, placeholder, items, validate, onChange, hint,
 }: {
   label: string
   placeholder: string
@@ -14,7 +14,6 @@ function ListEditor({
   validate: (v: string) => boolean
   onChange: (items: string[]) => void
   hint: string
-  hue: string
 }) {
   const [draft, setDraft] = useState('')
   const [invalid, setInvalid] = useState(false)
@@ -33,7 +32,7 @@ function ListEditor({
   }
 
   return (
-    <Panel title={label} hue={hue} count={items.length}>
+    <Cell title={label} count={items.length}>
       <form onSubmit={add} className="inline-form">
         <input
           value={draft}
@@ -54,12 +53,12 @@ function ListEditor({
           ))}
         </ul>
       )}
-    </Panel>
+    </Cell>
   )
 }
 
 function RepoMultiSelect({
-  items, onChange, options, loading, error, disabled, hue,
+  items, onChange, options, loading, error, disabled,
 }: {
   items: string[]
   onChange: (items: string[]) => void
@@ -67,7 +66,6 @@ function RepoMultiSelect({
   loading: boolean
   error: boolean
   disabled: boolean
-  hue: string
 }) {
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
@@ -106,7 +104,7 @@ function RepoMultiSelect({
   }
 
   return (
-    <Panel title="Watched repositories" hue={hue} count={items.length}>
+    <Cell title="Watched repositories" count={items.length}>
       <div className="ms" ref={rootRef}>
         <button
           type="button"
@@ -171,7 +169,7 @@ function RepoMultiSelect({
           ))}
         </ul>
       )}
-    </Panel>
+    </Cell>
   )
 }
 
@@ -237,7 +235,7 @@ export function SettingsPage() {
         </div>
       )}
 
-      <Panel title="GitHub token" hue="var(--attn)">
+      <Cell title="GitHub token">
         <p className="field-hint">
           Fine-grained personal access token, stored only in this browser and sent only to api.github.com.
         </p>
@@ -276,7 +274,7 @@ export function SettingsPage() {
             classic token with <code>repo</code> scope, or narrow the watchlist.
           </p>
         )}
-      </Panel>
+      </Cell>
 
       <RepoMultiSelect
         items={config.repos}
@@ -285,7 +283,6 @@ export function SettingsPage() {
         loading={viewerRepos.isLoading}
         error={Boolean(viewerRepos.error)}
         disabled={!token}
-        hue="var(--stage-review)"
       />
 
       <ListEditor
@@ -295,10 +292,9 @@ export function SettingsPage() {
         validate={isLogin}
         onChange={(users) => setConfig({ ...config, users })}
         hint="GitHub username, e.g. octocat"
-        hue="var(--stage-draft)"
       />
 
-      <Panel title="Stale threshold" hue="var(--stage-changes)">
+      <Cell title="Stale threshold">
         <label className="inline-form">
           Mark a PR stale after
           <input
@@ -314,14 +310,14 @@ export function SettingsPage() {
           days without updates
         </label>
         <p className="field-hint">Drives the idle stripe on board cards and the “Idle only” filter.</p>
-      </Panel>
+      </Cell>
 
-      <Panel title="Share config" hue="var(--stage-approved)">
+      <Cell title="Share config">
         <p className="field-hint">
           Copies a link containing your watchlist (repos, people, stale threshold). Your token is never included.
         </p>
         <button onClick={copyShareLink}>{copied ? 'Copied ✓' : 'Copy share link'}</button>
-      </Panel>
+      </Cell>
     </div>
   )
 }

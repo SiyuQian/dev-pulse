@@ -1,4 +1,6 @@
-const AVATAR_HUES = ['#7a6bc4', '#3d7ea6', '#b8703a', '#4e8b63', '#b0537c', '#8a6f2e', '#5b7fa8']
+// Bright hues that carry dark text — the Console shell is dark, so avatars are
+// the light element, not the dark one.
+const AVATAR_HUES = ['#8ab4f8', '#4ddb9a', '#c58af9', '#f28b82', '#fdd663', '#7fd8e8', '#f0a3c8']
 
 export function avatarHue(login: string): string {
   let hash = 0
@@ -30,4 +32,15 @@ export function median(values: number[]): number | null {
   const sorted = [...values].sort((a, b) => a - b)
   const mid = Math.floor(sorted.length / 2)
   return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2
+}
+
+export function percentile(values: number[], p: number): number | null {
+  if (values.length === 0) return null
+  const sorted = [...values].sort((a, b) => a - b)
+  return sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * p))]
+}
+
+/** Signed delta with an explicit sign, for "against last week" notes. */
+export function signed(n: number, unit = ''): string {
+  return `${n > 0 ? '+' : n < 0 ? '−' : '±'}${Math.abs(n)}${unit}`
 }
