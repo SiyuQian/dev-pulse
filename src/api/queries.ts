@@ -8,7 +8,7 @@ import {
   fetchViewerRepoPage,
   GitHubError,
 } from './github'
-import type { OrgMember, OrgMemberCursor, ViewerRepo } from './github'
+import type { OrgMember, OrgMemberCursor, SkippedOrg, ViewerRepo } from './github'
 import type { WatchConfig } from '../storage/config'
 
 /**
@@ -114,8 +114,14 @@ export function useViewerRepos(token: string): ViewerReposResult {
   return { repos, isLoading, isBackfilling: isFetchingNextPage, error }
 }
 
-/** 100 members per page — five pages covers orgs far larger than a team board. */
-const ORG_MEMBER_PAGE_LIMIT = 5
+/**
+ * 100 members per page. Twenty pages because real enterprise orgs run into the
+ * thousands and `membersWithRole` has no server-side search (checked against the
+ * live schema — only cursor args), so the only way to make a teammate findable
+ * is to have walked far enough to have them. The walk is one cheap request per
+ * page and the result is cached for 30 minutes.
+ */
+const ORG_MEMBER_PAGE_LIMIT = 20
 
 export interface OrgMembersResult {
   members: OrgMember[]
@@ -123,6 +129,12 @@ export interface OrgMembersResult {
   isLoading: boolean
   isBackfilling: boolean
   error: Error | null
+  /** Orgs the token could see but whose member list it couldn't read. */
+  skipped: SkippedOrg[]
+  /** How many orgs the token reports at all. Zero is its own diagnosis. */
+  orgCount: number
+  /** The org is bigger than the page cap — the list is real but incomplete. */
+  isTruncated: boolean
 }
 
 /**
@@ -158,8 +170,25 @@ export function useOrgMembers(token: string): OrgMembersResult {
       for (const member of page.members)
         if (!byLogin.has(member.login)) byLogin.set(member.login, member)
     }
-    return [...byLogin.values()].sort((a, b) => a.login.localeCompare(b.login))
+    // Named accounts first. Big orgs are full of bots and SCIM-provisioned
+    // service accounts whose login is a hex blob and whose name is null; sorting
+    // by login alone puts those at the very top and buries every actual person.
+    return [...byLogin.values()].sort((a, b) => {
+      if (Boolean(a.name) !== Boolean(b.name)) return a.name ? -1 : 1
+      return (a.name ?? a.login).localeCompare(b.name ?? b.login)
+    })
   }, [data])
 
-  return { members, isLoading, isBackfilling: isFetchingNextPage, error }
+  const pages = data?.pages ?? []
+  const last = pages.at(-1)
+
+  return {
+    members,
+    isLoading,
+    isBackfilling: isFetchingNextPage,
+    error,
+    skipped: pages.flatMap((page) => page.skipped),
+    orgCount: last?.orgs.length ?? 0,
+    isTruncated: pages.length >= ORG_MEMBER_PAGE_LIMIT && Boolean(last?.next),
+  }
 }
