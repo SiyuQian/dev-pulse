@@ -87,7 +87,7 @@ export function PeoplePage() {
       </Empty>
     )
   }
-  if (open.error) return <Empty error>Failed to load activity: {open.error.message}</Empty>
+  if (open.error && !open.data) return <Empty error>Failed to load activity: {open.error.message}</Empty>
   if (open.isPending || !open.data) return <Empty>Loading team activity…</Empty>
 
   const totalOpen = open.data.prs.length

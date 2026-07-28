@@ -58,12 +58,14 @@ function ListEditor({
 }
 
 function RepoMultiSelect({
-  items, onChange, options, loading, error, disabled,
+  items, onChange, options, loading, backfilling, error, disabled,
 }: {
   items: string[]
   onChange: (items: string[]) => void
   options: string[]
   loading: boolean
+  /** More pages still arriving — the list is usable but not yet complete. */
+  backfilling: boolean
   error: boolean
   disabled: boolean
 }) {
@@ -139,7 +141,9 @@ function RepoMultiSelect({
               {loading && <p className="ms-status">Loading your repositories…</p>}
               {error && <p className="ms-status error">Couldn’t load repositories — type owner/name to add manually.</p>}
               {!loading && !error && filtered.length === 0 && !canAddManual && (
-                <p className="ms-status">No matching repositories.</p>
+                <p className="ms-status">
+                  {backfilling ? 'Still loading more repositories…' : 'No matching repositories.'}
+                </p>
               )}
               {filtered.map((repo) => (
                 <label key={repo} className="ms-option" role="option" aria-selected={selected.has(repo)}>
@@ -182,7 +186,7 @@ export function SettingsPage() {
   const viewerRepos = useViewerRepos(token)
   const navigate = useNavigate()
 
-  const repoOptions = (viewerRepos.data ?? [])
+  const repoOptions = viewerRepos.repos
     .filter((r) => !r.isArchived)
     .map((r) => r.nameWithOwner)
 
@@ -281,6 +285,7 @@ export function SettingsPage() {
         onChange={(repos) => setConfig({ ...config, repos })}
         options={repoOptions}
         loading={viewerRepos.isLoading}
+        backfilling={viewerRepos.isBackfilling}
         error={Boolean(viewerRepos.error)}
         disabled={!token}
       />

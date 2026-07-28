@@ -266,24 +266,27 @@ const VIEWER_REPOS_QUERY = /* GraphQL */ `
   }
 `
 
-// Repos the token can see, most-recently-pushed first. Paginates a few pages
-// so large accounts still surface their active repos without unbounded fetches.
-export async function fetchViewerRepos(token: string): Promise<ViewerRepo[]> {
-  const repos: ViewerRepo[] = []
-  let after: string | null = null
-  for (let page = 0; page < 5; page++) {
-    const data: {
-      viewer: {
-        repositories: {
-          pageInfo: { hasNextPage: boolean; endCursor: string | null }
-          nodes: ViewerRepo[]
-        }
+export interface ViewerRepoPage {
+  repos: ViewerRepo[]
+  nextCursor: string | null
+}
+
+/**
+ * One page of the repos the token can see, most-recently-pushed first.
+ *
+ * GraphQL cursor pagination is inherently serial, so this returns a single page
+ * rather than awaiting the whole walk — the repo picker renders from page one
+ * while the caller backfills the rest in the background (see useViewerRepos).
+ */
+export async function fetchViewerRepoPage(token: string, after: string | null): Promise<ViewerRepoPage> {
+  const data: {
+    viewer: {
+      repositories: {
+        pageInfo: { hasNextPage: boolean; endCursor: string | null }
+        nodes: ViewerRepo[]
       }
-    } = await graphql(token, VIEWER_REPOS_QUERY, { first: 100, after })
-    const { nodes, pageInfo } = data.viewer.repositories
-    repos.push(...nodes)
-    if (!pageInfo.hasNextPage) break
-    after = pageInfo.endCursor
-  }
-  return repos
+    }
+  } = await graphql(token, VIEWER_REPOS_QUERY, { first: 100, after })
+  const { nodes, pageInfo } = data.viewer.repositories
+  return { repos: nodes, nextCursor: pageInfo.hasNextPage ? pageInfo.endCursor : null }
 }

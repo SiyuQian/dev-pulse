@@ -9,8 +9,14 @@ import { useAppState } from '../../state/AppState'
 export function TopBar() {
   const { token, config } = useAppState()
   const { data: viewer } = useViewer(token)
-  const { data, isFetching, refetch, dataUpdatedAt } = useOpenPrs(token, config)
+  const { data, isFetching, refetch, dataUpdatedAt, error } = useOpenPrs(token, config)
 
+  // Pages keep rendering cached rows when a refetch fails, so the freshness
+  // indicator is the one place that has to admit the data is no longer live.
+  // A rehydrated error survives JSON as a bare object, hence the fallback.
+  const staleError = data && error ? (error.message || 'could not reach GitHub') : null
+  const updatedAt = new Date(dataUpdatedAt)
+  const updatedLabel = updatedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
   const rate = data?.rateLimit
   const quotaRatio = rate && rate.limit > 0 ? rate.remaining / rate.limit : null
   const scope = [
@@ -26,9 +32,12 @@ export function TopBar() {
       <span className="top-spacer" />
 
       {dataUpdatedAt > 0 && (
-        <span className="freshness" title={new Date(dataUpdatedAt).toLocaleTimeString()}>
-          <i className={`pulse${isFetching ? ' busy' : ''}`} />
-          {isFetching ? 'syncing' : `updated ${new Date(dataUpdatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`}
+        <span
+          className="freshness"
+          title={staleError ? `Last refresh failed: ${staleError}` : updatedAt.toLocaleTimeString()}
+        >
+          <i className={`pulse${isFetching ? ' busy' : staleError ? ' stale' : ''}`} />
+          {isFetching ? 'syncing' : staleError ? `stale · ${updatedLabel}` : `updated ${updatedLabel}`}
         </span>
       )}
 

@@ -4,6 +4,14 @@
     <meta charset="UTF-8" />
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>⚡</text></svg>">
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!--
+      Warm the DNS + TLS handshakes before JS boots and fires the first fetch.
+      `crossorigin` is required: our GitHub calls send an Authorization header,
+      so they use the CORS connection pool and would otherwise ignore a
+      credentialled-mode preconnect.
+    -->
+    <link rel="preconnect" href="https://api.github.com" crossorigin />
+    <link rel="preconnect" href="https://avatars.githubusercontent.com" crossorigin />
     <title>dev-pulse</title>
   </head>
   <body>

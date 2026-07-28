@@ -203,6 +203,8 @@ kbd {
   animation: pulse 2.6s infinite;
 }
 .freshness .pulse.busy { background: var(--warn); animation-duration: 1s; }
+/* Cached rows are still on screen but the last refresh failed — stop pulsing. */
+.freshness .pulse.stale { background: var(--bad); animation: none; }
 @keyframes pulse {
   0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--ok) 45%, transparent); }
   70% { box-shadow: 0 0 0 8px transparent; }

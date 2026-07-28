@@ -128,7 +128,9 @@ export function BoardPage() {
       </Empty>
     )
   }
-  if (error) return <Empty error>Failed to load PRs: {error.message}</Empty>
+  // With a persisted cache, `error` and `data` coexist: a failed background
+  // refetch must not throw away rows we can still show. TopBar marks them stale.
+  if (error && !data) return <Empty error>Failed to load PRs: {error.message}</Empty>
   if (isPending || !data) return <Empty>Loading pull requests…</Empty>
 
   const idleCount = allRows.filter((r) => r.idle >= staleDays).length
