@@ -328,6 +328,7 @@ tr:hover .title, tr.is-cursor .title { color: var(--blue); }
   width: 20px; height: 20px; border-radius: 50%; flex: none;
   display: inline-grid; place-items: center;
   font: 600 8.5px/1 var(--mono); color: #0a0b0d;
+  object-fit: cover; overflow: hidden;
 }
 .who { display: flex; align-items: center; gap: 8px; white-space: nowrap; }
 .who > span { font: 11px/1 var(--mono); color: var(--ink-2); }
