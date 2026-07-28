@@ -342,3 +342,129 @@ export async function fetchViewerRepoPage(
   const { nodes, pageInfo } = data.viewer.repositories
   return { repos: nodes, nextCursor: pageInfo.hasNextPage ? pageInfo.endCursor : null }
 }
+
+export interface OrgMember {
+  login: string
+  /** Display name, when the member has set one. */
+  name: string | null
+  /** The org this member was found in — used to group the picker. */
+  org: string
+}
+
+/**
+ * Where the org-member walk got to: which orgs there are, which one we're in,
+ * and how far through its members. Members paginate per org, so a plain cursor
+ * isn't enough — the walk has to carry the org list with it.
+ */
+export interface OrgMemberCursor {
+  orgs: string[]
+  index: number
+  after: string | null
+}
+
+export interface OrgMemberPage {
+  members: OrgMember[]
+  /** Null once every org has been walked. */
+  next: OrgMemberCursor | null
+}
+
+/** Enough for anyone's org list; beyond this the picker's search is the answer. */
+const VIEWER_ORGS_LIMIT = 25
+
+const VIEWER_ORGS_QUERY = /* GraphQL */ `
+  query ViewerOrgs($first: Int!) {
+    viewer {
+      organizations(first: $first) {
+        nodes {
+          login
+        }
+      }
+    }
+  }
+`
+
+const ORG_MEMBERS_QUERY = /* GraphQL */ `
+  query OrgMembers($org: String!, $first: Int!, $after: String) {
+    organization(login: $org) {
+      membersWithRole(first: $first, after: $after) {
+        pageInfo {
+          hasNextPage
+          endCursor
+        }
+        nodes {
+          login
+          name
+        }
+      }
+    }
+  }
+`
+
+export async function fetchViewerOrgs(token: string): Promise<string[]> {
+  const data = await graphql<{ viewer: { organizations: { nodes: { login: string }[] } } }>(
+    token,
+    VIEWER_ORGS_QUERY,
+    { first: VIEWER_ORGS_LIMIT },
+  )
+  return data.viewer.organizations.nodes.map((node) => node.login)
+}
+
+interface OrgMembersData {
+  organization: {
+    membersWithRole: {
+      pageInfo: { hasNextPage: boolean; endCursor: string | null }
+      nodes: { login: string; name: string | null }[]
+    }
+  } | null
+}
+
+/**
+ * One page of teammates from the orgs the viewer belongs to, so Settings can
+ * offer real colleagues instead of asking people to remember logins.
+ *
+ * Members paginate per org and cursors are serial, so this returns a single
+ * page and a cursor to resume from — the picker renders page one immediately
+ * and the caller backfills the rest (see useOrgMembers). Orgs whose member list
+ * the token can't read are skipped rather than failing the walk: a fine-grained
+ * PAT is scoped to one org, and its "Members" permission is opt-in.
+ */
+export async function fetchOrgMemberPage(
+  token: string,
+  cursor: OrgMemberCursor | null,
+): Promise<OrgMemberPage> {
+  const orgs = cursor?.orgs ?? (await fetchViewerOrgs(token))
+  let index = cursor?.index ?? 0
+  let after = cursor?.after ?? null
+
+  while (index < orgs.length) {
+    const org = orgs[index]
+    try {
+      const data = await graphql<OrgMembersData>(token, ORG_MEMBERS_QUERY, {
+        org,
+        first: 100,
+        after,
+      })
+      const page = data.organization?.membersWithRole
+      if (page) {
+        const members = page.nodes.map((node) => ({ login: node.login, name: node.name, org }))
+        const hasMoreInOrg = page.pageInfo.hasNextPage
+        const nextIndex = hasMoreInOrg ? index : index + 1
+        return {
+          members,
+          next:
+            hasMoreInOrg || nextIndex < orgs.length
+              ? { orgs, index: nextIndex, after: hasMoreInOrg ? page.pageInfo.endCursor : null }
+              : null,
+        }
+      }
+    } catch (error) {
+      // A dead token is fatal everywhere; anything else here means "this org
+      // won't tell us", which the next org might well not repeat.
+      if (error instanceof GitHubError && error.status === 401) throw error
+    }
+    index++
+    after = null
+  }
+
+  return { members: [], next: null }
+}

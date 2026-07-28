@@ -1548,6 +1548,39 @@ tr:hover .avatar-row .avatar {
   height: 13px;
   accent-color: var(--signal);
 }
+.ms-option.person {
+  gap: 8px;
+}
+.ms-option.person .avatar {
+  width: 20px;
+  height: 20px;
+  font-size: 8px;
+}
+.ms-person {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+.ms-person em {
+  font-style: normal;
+  color: var(--ink-3);
+  font-size: 10.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ms-group {
+  position: sticky;
+  top: 0;
+  background: var(--panel);
+  font: 600 9px/1 var(--mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  padding: 8px 7px 5px;
+  margin: 0;
+}
 .ms-status {
   font: 11px/1.4 var(--mono);
   color: var(--ink-3);

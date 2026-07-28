@@ -1,7 +1,16 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react'
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type Dispatch,
+  type RefObject,
+  type SetStateAction,
+} from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAppState, type Account } from '../../state/AppState'
-import { useViewer, useViewerRepos } from '../../api/queries'
+import { useOrgMembers, useViewer, useViewerRepos } from '../../api/queries'
+import type { OrgMember } from '../../api/github'
 import {
   decodeShareFragment,
   encodeShareFragment,
@@ -9,75 +18,47 @@ import {
   isRepoRef,
   profileName,
 } from '../../storage/config'
-import { AccountFace, Cell } from '../shared/ui'
+import { AccountFace, Avatar, Cell } from '../shared/ui'
 import { scopeSummary } from '../shared/format'
 
-function ListEditor({
-  label,
-  placeholder,
-  items,
-  validate,
-  onChange,
-  hint,
-}: {
-  label: string
-  placeholder: string
-  items: string[]
-  validate: (v: string) => boolean
-  onChange: (items: string[]) => void
-  hint: string
-}) {
-  const [draft, setDraft] = useState('')
-  const [invalid, setInvalid] = useState(false)
-
-  function add(e: FormEvent) {
-    e.preventDefault()
-    const value = draft.trim()
-    if (!value) return
-    if (!validate(value)) {
-      setInvalid(true)
-      return
+/**
+ * Both pickers are plain absolutely-positioned menus, so both need this.
+ * Takes the `useState` setter rather than a closure: it's referentially stable,
+ * so the listener is bound once per open rather than on every keystroke.
+ */
+function useCloseOnOutsideClick(
+  open: boolean,
+  setOpen: Dispatch<SetStateAction<boolean>>,
+): RefObject<HTMLDivElement | null> {
+  const rootRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (!open) return
+    function onDocClick(e: MouseEvent) {
+      if (rootRef.current && !rootRef.current.contains(e.target as Node)) setOpen(false)
     }
-    setInvalid(false)
-    if (!items.includes(value)) onChange([...items, value])
-    setDraft('')
-  }
+    document.addEventListener('mousedown', onDocClick)
+    return () => document.removeEventListener('mousedown', onDocClick)
+  }, [open, setOpen])
+  return rootRef
+}
 
+/** The selected-logins chip row shared by both pickers. */
+function SelectionChips({ items, onChange }: { items: string[]; onChange: (i: string[]) => void }) {
+  if (items.length === 0) return null
   return (
-    <Cell title={label} count={items.length}>
-      <form onSubmit={add} className="inline-form">
-        <input
-          value={draft}
-          placeholder={placeholder}
-          onChange={(e) => {
-            setDraft(e.target.value)
-            setInvalid(false)
-          }}
-          aria-label={label}
-        />
-        <button type="submit">Add</button>
-      </form>
-      {invalid ? (
-        <p className="field-error">Invalid format — expected {hint}</p>
-      ) : (
-        <p className="field-hint">{hint}</p>
-      )}
-      {items.length > 0 && (
-        <ul className="chip-list">
-          {items.map((item) => (
-            <li key={item} className="chip">
-              {item}
-              <button
-                aria-label={`Remove ${item}`}
-                onClick={() => onChange(items.filter((i) => i !== item))}
-              >
-                ×
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
-    </Cell>
+    <ul className="chip-list">
+      {items.map((item) => (
+        <li key={item} className="chip">
+          {item}
+          <button
+            aria-label={`Remove ${item}`}
+            onClick={() => onChange(items.filter((i) => i !== item))}
+          >
+            ×
+          </button>
+        </li>
+      ))}
+    </ul>
   )
 }
 
@@ -102,16 +83,7 @@ function RepoMultiSelect({
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
   const [invalid, setInvalid] = useState(false)
-  const rootRef = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    if (!open) return
-    function onDocClick(e: MouseEvent) {
-      if (rootRef.current && !rootRef.current.contains(e.target as Node)) setOpen(false)
-    }
-    document.addEventListener('mousedown', onDocClick)
-    return () => document.removeEventListener('mousedown', onDocClick)
-  }, [open])
+  const rootRef = useCloseOnOutsideClick(open, () => setOpen(false))
 
   const selected = new Set(items)
   const q = query.trim().toLowerCase()
@@ -220,21 +192,175 @@ function RepoMultiSelect({
           Pick from repositories your token can see, or type any owner/name.
         </p>
       )}
-      {items.length > 0 && (
-        <ul className="chip-list">
-          {items.map((item) => (
-            <li key={item} className="chip">
-              {item}
-              <button
-                aria-label={`Remove ${item}`}
-                onClick={() => onChange(items.filter((i) => i !== item))}
-              >
-                ×
-              </button>
-            </li>
-          ))}
-        </ul>
+      <SelectionChips items={items} onChange={onChange} />
+    </Cell>
+  )
+}
+
+/**
+ * People picker. When the account belongs to orgs, it lists your actual
+ * colleagues — nobody remembers a teammate's GitHub login, and typing one
+ * wrong silently produces an empty board. Typing a login by hand stays
+ * available for outside collaborators, and is the whole picker for a token
+ * that can't read org membership.
+ */
+function PeopleMultiSelect({
+  items,
+  onChange,
+  members,
+  loading,
+  backfilling,
+  disabled,
+}: {
+  items: string[]
+  onChange: (items: string[]) => void
+  members: OrgMember[]
+  loading: boolean
+  /** More pages still arriving — the list is usable but not yet complete. */
+  backfilling: boolean
+  disabled: boolean
+}) {
+  const [open, setOpen] = useState(false)
+  const [query, setQuery] = useState('')
+  const [invalid, setInvalid] = useState(false)
+  const rootRef = useCloseOnOutsideClick(open, setOpen)
+
+  const selected = new Set(items)
+  const q = query.trim().toLowerCase()
+  const filtered = members.filter(
+    (m) => m.login.toLowerCase().includes(q) || (m.name?.toLowerCase().includes(q) ?? false),
+  )
+  const exactMatch = members.some((m) => m.login.toLowerCase() === q)
+  const canAddManual = q.length > 0 && !exactMatch
+
+  // Only worth grouping when the account spans more than one org.
+  const groups = useMemo(() => {
+    const byOrg = new Map<string, OrgMember[]>()
+    for (const member of filtered) {
+      const list = byOrg.get(member.org)
+      if (list) list.push(member)
+      else byOrg.set(member.org, [member])
+    }
+    return [...byOrg.entries()]
+  }, [filtered])
+  const orgCount = new Set(members.map((m) => m.org)).size
+
+  function toggle(login: string) {
+    onChange(selected.has(login) ? items.filter((i) => i !== login) : [...items, login])
+  }
+
+  function addManual() {
+    const value = query.trim()
+    if (!value) return
+    if (!isLogin(value)) {
+      setInvalid(true)
+      return
+    }
+    setInvalid(false)
+    if (!selected.has(value)) onChange([...items, value])
+    setQuery('')
+  }
+
+  return (
+    <Cell title="Watched people" count={items.length}>
+      <div className="ms" ref={rootRef}>
+        <button
+          type="button"
+          className="ms-control"
+          disabled={disabled}
+          onClick={() => setOpen((v) => !v)}
+          aria-haspopup="listbox"
+          aria-expanded={open}
+        >
+          <span className="ms-control-label">
+            {disabled
+              ? 'Save a token to pick from your organisation'
+              : items.length > 0
+                ? `${items.length} selected`
+                : 'Select people…'}
+          </span>
+          <span className="ms-caret" aria-hidden="true">
+            ▾
+          </span>
+        </button>
+
+        {open && !disabled && (
+          <div className="ms-menu" role="listbox" aria-multiselectable="true">
+            <input
+              className="ms-search"
+              autoFocus
+              value={query}
+              placeholder="Search your org, or type a login…"
+              onChange={(e) => {
+                setQuery(e.target.value)
+                setInvalid(false)
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && canAddManual) {
+                  e.preventDefault()
+                  addManual()
+                }
+              }}
+              aria-label="Search people"
+            />
+            <div className="ms-options">
+              {loading && <p className="ms-status">Loading your organisation…</p>}
+              {!loading && members.length === 0 && (
+                <p className="ms-status">
+                  No organisation members available — your token needs read access to org members.
+                  Type a login to add anyone.
+                </p>
+              )}
+              {!loading && members.length > 0 && filtered.length === 0 && !canAddManual && (
+                <p className="ms-status">
+                  {backfilling ? 'Still loading more people…' : 'No matching people.'}
+                </p>
+              )}
+              {groups.map(([org, people]) => (
+                <div key={org}>
+                  {orgCount > 1 && <p className="ms-group">{org}</p>}
+                  {people.map((member) => (
+                    <label
+                      key={member.login}
+                      className="ms-option person"
+                      role="option"
+                      aria-selected={selected.has(member.login)}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={selected.has(member.login)}
+                        onChange={() => toggle(member.login)}
+                      />
+                      <Avatar login={member.login} />
+                      <span className="ms-person">
+                        <span>{member.login}</span>
+                        {member.name && <em>{member.name}</em>}
+                      </span>
+                    </label>
+                  ))}
+                </div>
+              ))}
+              {canAddManual && (
+                <button type="button" className="ms-add" onClick={addManual}>
+                  {isLogin(query.trim())
+                    ? `Add “${query.trim()}”`
+                    : 'Add… (expects a GitHub login)'}
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+      {invalid ? (
+        <p className="field-error">Invalid format — expected a GitHub username, e.g. octocat</p>
+      ) : (
+        <p className="field-hint">
+          {backfilling
+            ? 'Loading more of your organisation…'
+            : 'Pick teammates from your organisation, or type any GitHub username.'}
+        </p>
       )}
+      <SelectionChips items={items} onChange={onChange} />
     </Cell>
   )
 }
@@ -334,6 +460,7 @@ export function SettingsPage() {
   const [pendingImport, setPendingImport] = useState<ReturnType<typeof decodeShareFragment>>(null)
   const viewer = useViewer(token)
   const viewerRepos = useViewerRepos(token)
+  const orgMembers = useOrgMembers(token)
   const navigate = useNavigate()
 
   const active = accounts.find((a) => a.id === activeId) ?? accounts[0]
@@ -486,13 +613,13 @@ export function SettingsPage() {
         disabled={!token}
       />
 
-      <ListEditor
-        label="Watched people"
-        placeholder="github-login"
+      <PeopleMultiSelect
         items={config.users}
-        validate={isLogin}
         onChange={(users) => setConfig({ ...config, users })}
-        hint="GitHub username, e.g. octocat"
+        members={orgMembers.members}
+        loading={orgMembers.isLoading}
+        backfilling={orgMembers.isBackfilling}
+        disabled={!token}
       />
 
       <Cell title="Stale threshold">
