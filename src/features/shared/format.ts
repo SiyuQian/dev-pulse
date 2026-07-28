@@ -40,6 +40,15 @@ export function percentile(values: number[], p: number): number | null {
   return sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * p))]
 }
 
+/** "3 repos · 2 people" — how wide a watchlist is, in the top bar and per account. */
+export function scopeSummary(repos: string[], users: string[], empty = ''): string {
+  const parts = [
+    repos.length > 0 ? `${repos.length} repo${repos.length === 1 ? '' : 's'}` : null,
+    users.length > 0 ? `${users.length} ${users.length === 1 ? 'person' : 'people'}` : null,
+  ].filter(Boolean)
+  return parts.length > 0 ? parts.join(' · ') : empty
+}
+
 /** Signed delta with an explicit sign, for "against last week" notes. */
 export function signed(n: number, unit = ''): string {
   return `${n > 0 ? '+' : n < 0 ? '−' : '±'}${Math.abs(n)}${unit}`

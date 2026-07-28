@@ -9,9 +9,10 @@ A pure-frontend PR activity dashboard for teams. Statically hosted; each user au
   - GraphQL (`https://api.github.com/graphql`) preferred for PR lists/reviews — far fewer requests than REST
   - REST only where GraphQL is awkward (e.g. rate-limit probing)
 - **Auth**: user-supplied fine-grained PAT, kept in `localStorage` only. It must never be sent anywhere except `api.github.com`, never logged, never placed in URLs.
+- **Accounts**: multiple GitHub accounts, each a *profile* with its own PAT and its own watchlist. One is active at a time and drives every view; the switcher lives in the top bar. Profiles are stored in `devpulse:profiles:v2`, tokens separately in `devpulse:tokens:v2` keyed by profile id, so nothing that serialises a profile can carry a token.
 - **State**:
-  - Server state: TanStack Query (caching, polling/refetch intervals, rate-limit-aware retry)
-  - Config (watched repos/users, PAT, preferences): localStorage, versioned schema
+  - Server state: TanStack Query (caching, polling/refetch intervals, rate-limit-aware retry). Query keys carry a fingerprint of the active token so accounts never share a cache entry.
+  - Config (profiles, watched repos/users, preferences): localStorage, versioned schema with migration
 - **Config sharing**: watchlist config (NOT the PAT) can be encoded into a URL fragment (`#config=...`, base64 JSON) for one-click import by teammates. Use the fragment, not query params, so it never hits any server logs.
 - **Deployment**: static build (`vite build`) → Vercel / Cloudflare Pages. No server code.
 
