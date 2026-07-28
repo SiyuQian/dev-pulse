@@ -77,7 +77,7 @@ describe('fetchOrgMemberPage', () => {
     expect(page.next).toBeNull()
   })
 
-  it('skips an org whose members the token cannot read', async () => {
+  it('skips an org whose members the token cannot read, and reports why', async () => {
     mockGraphQL([
       orgsResponse('locked', 'acme'),
       { errors: [{ message: 'Resource not accessible by personal access token' }] },
@@ -88,6 +88,29 @@ describe('fetchOrgMemberPage', () => {
 
     expect(page.members).toEqual([{ login: 'ada', name: null, org: 'acme' }])
     expect(page.next).toBeNull()
+    expect(page.skipped).toEqual([
+      { org: 'locked', reason: 'Resource not accessible by personal access token' },
+    ])
+  })
+
+  /**
+   * The regression behind an empty picker with no explanation: an org the token
+   * can't resolve comes back as HTTP 200 with `organization: null`, so without a
+   * skipped entry it is indistinguishable from an org with no members.
+   */
+  it('reports an org that resolves to null rather than dropping it silently', async () => {
+    mockGraphQL([
+      orgsResponse('invisible'),
+      { errors: [{ type: 'NOT_FOUND', message: 'Could not resolve to an Organization' }] },
+    ])
+
+    const page = await fetchOrgMemberPage('tok', null)
+
+    expect(page.members).toEqual([])
+    expect(page.skipped).toEqual([
+      { org: 'invisible', reason: 'Could not resolve to an Organization' },
+    ])
+    expect(page.orgs).toEqual(['invisible'])
   })
 
   it('is empty when the account has no orgs', async () => {
@@ -96,7 +119,7 @@ describe('fetchOrgMemberPage', () => {
     const page = await fetchOrgMemberPage('tok', null)
 
     expect(calls).toHaveLength(1)
-    expect(page).toEqual({ members: [], next: null })
+    expect(page).toEqual({ members: [], next: null, orgs: [], skipped: [] })
   })
 
   it('propagates an expired token rather than walking every org', async () => {

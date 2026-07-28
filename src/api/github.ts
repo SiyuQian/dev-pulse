@@ -362,10 +362,29 @@ export interface OrgMemberCursor {
   after: string | null
 }
 
+/** An org the walk passed over, and what GitHub said when it tried. */
+export interface SkippedOrg {
+  org: string
+  reason: string
+}
+
 export interface OrgMemberPage {
   members: OrgMember[]
   /** Null once every org has been walked. */
   next: OrgMemberCursor | null
+  /**
+   * Every org this walk covers. Carried on each page so the picker can tell
+   * "your token reports no orgs at all" apart from "your orgs returned nobody" —
+   * the two have completely different fixes and used to look identical.
+   */
+  orgs: string[]
+  /**
+   * Orgs skipped on *this* page because their member list wasn't readable.
+   * Silently dropping these is what made an unusable token look like an empty
+   * org: GitHub answers "org you can't see" with HTTP 200 + a NOT_FOUND error,
+   * so nothing downstream had any way to know.
+   */
+  skipped: SkippedOrg[]
 }
 
 /** Enough for anyone's org list; beyond this the picker's search is the answer. */
@@ -435,6 +454,7 @@ export async function fetchOrgMemberPage(
   const orgs = cursor?.orgs ?? (await fetchViewerOrgs(token))
   let index = cursor?.index ?? 0
   let after = cursor?.after ?? null
+  const skipped: SkippedOrg[] = []
 
   while (index < orgs.length) {
     const org = orgs[index]
@@ -455,16 +475,22 @@ export async function fetchOrgMemberPage(
             hasMoreInOrg || nextIndex < orgs.length
               ? { orgs, index: nextIndex, after: hasMoreInOrg ? page.pageInfo.endCursor : null }
               : null,
+          orgs,
+          skipped,
         }
       }
+      // A 200 with `organization: null` and no thrown error: nothing to report
+      // beyond "this token can't resolve the org".
+      skipped.push({ org, reason: 'Not visible to this token' })
     } catch (error) {
       // A dead token is fatal everywhere; anything else here means "this org
       // won't tell us", which the next org might well not repeat.
       if (error instanceof GitHubError && error.status === 401) throw error
+      skipped.push({ org, reason: error instanceof Error ? error.message : 'Unknown error' })
     }
     index++
     after = null
   }
 
-  return { members: [], next: null }
+  return { members: [], next: null, orgs, skipped }
 }

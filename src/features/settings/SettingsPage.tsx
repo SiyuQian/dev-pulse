@@ -10,7 +10,7 @@ import {
 import { useNavigate } from 'react-router-dom'
 import { useAppState, type Account } from '../../state/AppState'
 import { useOrgMembers, useViewer, useViewerRepos } from '../../api/queries'
-import type { OrgMember } from '../../api/github'
+import type { OrgMember, SkippedOrg } from '../../api/github'
 import {
   decodeShareFragment,
   encodeShareFragment,
@@ -83,7 +83,7 @@ function RepoMultiSelect({
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
   const [invalid, setInvalid] = useState(false)
-  const rootRef = useCloseOnOutsideClick(open, () => setOpen(false))
+  const rootRef = useCloseOnOutsideClick(open, setOpen)
 
   const selected = new Set(items)
   const q = query.trim().toLowerCase()
@@ -156,11 +156,24 @@ function RepoMultiSelect({
                   Couldn’t load repositories — type owner/name to add manually.
                 </p>
               )}
-              {!loading && !error && filtered.length === 0 && !canAddManual && (
+              {!loading && !error && options.length === 0 && !canAddManual && (
                 <p className="ms-status">
-                  {backfilling ? 'Still loading more repositories…' : 'No matching repositories.'}
+                  {backfilling
+                    ? 'Still loading more repositories…'
+                    : // Distinct from "no match": the token sees nothing at all, which
+                      // is a permissions problem no amount of searching will fix.
+                      'This token can’t see any repositories. A fine-grained PAT only reaches the owner that created it — check the resource owner, and that Metadata is read-only enabled. Or type owner/name to add one directly.'}
                 </p>
               )}
+              {!loading &&
+                !error &&
+                options.length > 0 &&
+                filtered.length === 0 &&
+                !canAddManual && (
+                  <p className="ms-status">
+                    {backfilling ? 'Still loading more repositories…' : 'No matching repositories.'}
+                  </p>
+                )}
               {filtered.map((repo) => (
                 <label
                   key={repo}
@@ -198,6 +211,58 @@ function RepoMultiSelect({
 }
 
 /**
+ * Why the people list came back empty. Worth spelling out rather than showing
+ * one generic line: GitHub answers "an org this token can't see" with HTTP 200
+ * and a NOT_FOUND error, so an unauthorised token is indistinguishable from an
+ * empty org unless the reason is carried all the way here. Each case below has a
+ * different fix, and guessing between them is exactly what wastes the time.
+ */
+function PeopleDiagnosis({
+  error,
+  skipped,
+  orgCount,
+}: {
+  error: Error | null
+  skipped: SkippedOrg[]
+  orgCount: number
+}) {
+  if (error) {
+    return (
+      <p className="ms-status error">
+        Couldn’t load your organisation: {error.message}. Type a login to add anyone.
+      </p>
+    )
+  }
+  if (orgCount === 0) {
+    return (
+      <p className="ms-status">
+        This token reports no organisations. A fine-grained PAT only sees the organisation that
+        <em> owns</em> it — recreate it with your org as the resource owner, and grant it the
+        read-only <strong>Members</strong> organisation permission. A classic token needs{' '}
+        <code>read:org</code> and, if your org enforces SAML SSO, must be authorised for it. Until
+        then, type a login to add anyone.
+      </p>
+    )
+  }
+  if (skipped.length > 0) {
+    return (
+      <p className="ms-status">
+        Couldn’t read members of {skipped.map((s) => s.org).join(', ')} — GitHub said “
+        {skipped[0].reason}”. That usually means the token is missing the read-only{' '}
+        <strong>Members</strong> organisation permission, or hasn’t been authorised for the org’s
+        SAML SSO. Type a login to add anyone.
+      </p>
+    )
+  }
+  return (
+    <p className="ms-status">
+      Your {orgCount === 1 ? 'organisation reports' : 'organisations report'} no members. Type a
+      login to add anyone.
+    </p>
+  )
+}
+
+/**
  * People picker. When the account belongs to orgs, it lists your actual
  * colleagues — nobody remembers a teammate's GitHub login, and typing one
  * wrong silently produces an empty board. Typing a login by hand stays
@@ -211,6 +276,10 @@ function PeopleMultiSelect({
   loading,
   backfilling,
   disabled,
+  error,
+  skipped,
+  tokenOrgCount,
+  truncated,
 }: {
   items: string[]
   onChange: (items: string[]) => void
@@ -219,6 +288,12 @@ function PeopleMultiSelect({
   /** More pages still arriving — the list is usable but not yet complete. */
   backfilling: boolean
   disabled: boolean
+  error: Error | null
+  /** Orgs whose member list the token couldn't read, with GitHub's reason. */
+  skipped: SkippedOrg[]
+  /** Orgs the *token* reports, readable or not — distinct from those with members. */
+  tokenOrgCount: number
+  truncated: boolean
 }) {
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
@@ -306,9 +381,12 @@ function PeopleMultiSelect({
             <div className="ms-options">
               {loading && <p className="ms-status">Loading your organisation…</p>}
               {!loading && members.length === 0 && (
+                <PeopleDiagnosis error={error} skipped={skipped} orgCount={tokenOrgCount} />
+              )}
+              {!loading && truncated && (
                 <p className="ms-status">
-                  No organisation members available — your token needs read access to org members.
-                  Type a login to add anyone.
+                  Showing the first {members.length} members — your org is larger than that. Search
+                  narrows this list; anyone past it can still be added by typing their login.
                 </p>
               )}
               {!loading && members.length > 0 && filtered.length === 0 && !canAddManual && (
@@ -591,6 +669,12 @@ export function SettingsPage() {
             <dt>Checks</dt>
             <dd>CI badges for GitHub Actions runs</dd>
           </div>
+          <div>
+            <dt>Members</dt>
+            <dd>
+              Organisation permission — without it the people picker can’t list your teammates
+            </dd>
+          </div>
         </dl>
         <p className="field-hint">All read-only. No write permission is ever used.</p>
         {owners.size > 1 && (
@@ -620,6 +704,10 @@ export function SettingsPage() {
         loading={orgMembers.isLoading}
         backfilling={orgMembers.isBackfilling}
         disabled={!token}
+        error={orgMembers.error}
+        skipped={orgMembers.skipped}
+        tokenOrgCount={orgMembers.orgCount}
+        truncated={orgMembers.isTruncated}
       />
 
       <Cell title="Stale threshold">
