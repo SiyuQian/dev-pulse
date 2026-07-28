@@ -30,7 +30,7 @@
   --stage-changes: #ff6a5e;
   --stage-approved: #4ddb9a;
 
-  --rail-w: 56px;
+  --rail-w: 156px;
   --top-h: 46px;
 
   --mono: 'SF Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
@@ -117,16 +117,27 @@ kbd {
   background: var(--panel);
   display: flex;
   flex-direction: column;
-  align-items: center;
-  padding: 14px 0 16px;
-  gap: 6px;
+  padding: 0 10px 14px;
   position: sticky;
   top: 0;
   height: 100vh;
 }
+/* brand row height matches the top bar so the two rules read as one line */
+.rail-brand {
+  display: flex; align-items: center; gap: 9px;
+  height: var(--top-h); flex: none;
+  margin: 0 -10px 12px; padding: 0 14px;
+  border-bottom: 1px solid var(--line);
+  font: 600 12px/1 var(--mono);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-2);
+  white-space: nowrap;
+}
+.rail-brand b { color: var(--ink); font-weight: 600; }
 /* signature mark: the pipeline hues folded into one tile */
 .rail .mark {
-  width: 26px; height: 26px; border-radius: 7px; margin-bottom: 14px; flex: none;
+  width: 22px; height: 22px; border-radius: 6px; flex: none;
   background:
     linear-gradient(135deg, var(--signal) 0 40%, transparent 40%),
     linear-gradient(315deg, var(--blue) 0 40%, transparent 40%),
@@ -136,19 +147,31 @@ kbd {
 }
 .rail .mark::after {
   content: ''; position: absolute; inset: 0; margin: auto;
-  width: 6px; height: 6px; border-radius: 50%; background: var(--bg);
+  width: 5px; height: 5px; border-radius: 50%; background: var(--bg);
 }
-.rail a {
-  width: 36px; height: 36px; border-radius: 8px; flex: none;
-  display: grid; place-items: center;
+
+.rail-nav { display: flex; flex-direction: column; gap: 2px; flex: 1; min-height: 0; }
+.rail-nav a {
+  position: relative;
+  display: flex; align-items: center; gap: 10px;
+  height: 34px; padding: 0 10px; border-radius: 7px; flex: none;
   color: var(--ink-3);
-  font: 600 10px/1 var(--mono);
-  letter-spacing: 0.06em;
+  font: 600 10.5px/1 var(--mono);
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
 }
-.rail a:hover { color: var(--ink); background: var(--panel-2); }
-.rail a.active { color: var(--signal-ink); background: var(--signal); }
-.rail a.rail-settings.active { color: var(--ink); background: var(--panel-2); box-shadow: inset 0 0 0 1px var(--line-hi); }
-.rail-spacer { flex: 1; }
+.rail-nav a svg { width: 15px; height: 15px; flex: none; }
+.rail-nav a:hover { color: var(--ink); background: var(--panel-2); }
+/* active = panel lift + a signal tick at the rail edge. A full-width lime slab
+   would out-shout the "this is on you" rows the colour is reserved for. */
+.rail-nav a.active { color: var(--ink); background: var(--panel-2); }
+.rail-nav a.active::before {
+  content: ''; position: absolute; left: -10px; top: 7px; bottom: 7px;
+  width: 2px; border-radius: 0 2px 2px 0; background: var(--signal);
+}
+.rail-nav a.active svg { color: var(--signal); }
+.rail-settings { margin-top: auto; }
+.rail-nav a.rail-settings.active svg { color: var(--ink-2); }
 
 .work { min-width: 0; display: flex; flex-direction: column; }
 .work-main { padding: 0 0 60px; min-width: 0; }
@@ -545,6 +568,15 @@ tr:hover .avatar-row .avatar { box-shadow: 0 0 0 2px var(--panel); }
   .grid.c3 { grid-template-columns: repeat(2, 1fr); }
 }
 @media (max-width: 820px) {
+  /* narrow enough that 156px of rail costs more than the labels are worth */
+  :root { --rail-w: 54px; }
+  .rail-label { display: none; } /* the links keep their title as the accessible name */
+  .rail-word { /* hidden, not removed — the h1 still needs its text */
+    position: absolute; width: 1px; height: 1px; overflow: hidden;
+    clip: rect(0 0 0 0); white-space: nowrap;
+  }
+  .rail-brand { justify-content: center; padding: 0; }
+  .rail-nav a { justify-content: center; padding: 0; }
   .grid.c2, .grid.c3, .grid.c4 { grid-template-columns: 1fr; }
   .attn-lead { min-width: 150px; }
   .col-title { width: auto; }
