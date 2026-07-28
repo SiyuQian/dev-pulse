@@ -3,11 +3,12 @@ import { useEffect, useMemo } from 'react'
 import {
   fetchMergedPrs,
   fetchOpenPrs,
+  fetchOrgMemberPage,
   fetchViewerLogin,
   fetchViewerRepoPage,
   GitHubError,
 } from './github'
-import type { ViewerRepo } from './github'
+import type { OrgMember, OrgMemberCursor, ViewerRepo } from './github'
 import type { WatchConfig } from '../storage/config'
 
 /**
@@ -111,4 +112,54 @@ export function useViewerRepos(token: string): ViewerReposResult {
   const repos = useMemo(() => data?.pages.flatMap((page) => page.repos) ?? [], [data])
 
   return { repos, isLoading, isBackfilling: isFetchingNextPage, error }
+}
+
+/** 100 members per page — five pages covers orgs far larger than a team board. */
+const ORG_MEMBER_PAGE_LIMIT = 5
+
+export interface OrgMembersResult {
+  members: OrgMember[]
+  /** True only until the *first* page lands — later pages arrive silently. */
+  isLoading: boolean
+  isBackfilling: boolean
+  error: Error | null
+}
+
+/**
+ * Teammates from the viewer's orgs, for the people picker in Settings. Same
+ * shape as useViewerRepos: page one renders, the rest backfills behind it.
+ *
+ * Errors are the picker's normal case, not an exception — a token without org
+ * read access simply yields nothing and the picker falls back to typing a
+ * login by hand.
+ */
+export function useOrgMembers(token: string): OrgMembersResult {
+  const { data, error, isLoading, hasNextPage, isFetchingNextPage, fetchNextPage } =
+    useInfiniteQuery({
+      queryKey: ['orgMembers', accountKey(token)],
+      queryFn: ({ pageParam }) => fetchOrgMemberPage(token, pageParam),
+      initialPageParam: null as OrgMemberCursor | null,
+      getNextPageParam: (last, pages) =>
+        pages.length >= ORG_MEMBER_PAGE_LIMIT ? undefined : last.next,
+      enabled: Boolean(token),
+      staleTime: 30 * 60 * 1000,
+      retry: (failureCount, cause) =>
+        failureCount < 2 && !(cause instanceof GitHubError && cause.status === 401),
+    })
+
+  useEffect(() => {
+    if (hasNextPage && !isFetchingNextPage) void fetchNextPage()
+  }, [hasNextPage, isFetchingNextPage, fetchNextPage])
+
+  // One person can be in two watched orgs; the picker should list them once.
+  const members = useMemo(() => {
+    const byLogin = new Map<string, OrgMember>()
+    for (const page of data?.pages ?? []) {
+      for (const member of page.members)
+        if (!byLogin.has(member.login)) byLogin.set(member.login, member)
+    }
+    return [...byLogin.values()].sort((a, b) => a.login.localeCompare(b.login))
+  }, [data])
+
+  return { members, isLoading, isBackfilling: isFetchingNextPage, error }
 }
