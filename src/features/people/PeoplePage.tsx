@@ -27,7 +27,10 @@ export function PeoplePage() {
   const [days, setDays] = useState<Window>(28)
   // Stable per (mount, window) so the merged-PR query key doesn't churn.
   const [mountedAt] = useState(() => Date.now())
-  const since = useMemo(() => new Date(mountedAt - days * 86_400_000).toISOString(), [mountedAt, days])
+  const since = useMemo(
+    () => new Date(mountedAt - days * 86_400_000).toISOString(),
+    [mountedAt, days],
+  )
 
   const open = useOpenPrs(token, config)
   const merged = useMergedPrs(token, config, since)
@@ -112,7 +115,12 @@ export function PeoplePage() {
         <Cell title="Open right now" note="across the watchlist">
           <Stat value={totalOpen} unit="PRs" />
         </Cell>
-        <Cell title={`Merged · ${days}d`} note={merged.isPending ? 'counting…' : `${(totalMerged / (days / 7)).toFixed(1)} per week`}>
+        <Cell
+          title={`Merged · ${days}d`}
+          note={
+            merged.isPending ? 'counting…' : `${(totalMerged / (days / 7)).toFixed(1)} per week`
+          }
+        >
           <Stat value={merged.isPending ? '·' : totalMerged} unit="PRs" />
         </Cell>
         <Cell title="People with open work" note={`of ${people.length} active`}>
@@ -167,27 +175,53 @@ export function PeoplePage() {
                                 <i
                                   key={s.key}
                                   title={`${p.openByStage[s.key]} ${s.label}`}
-                                  style={{ flex: p.openByStage[s.key], background: s.hue } as CSSProperties}
+                                  style={
+                                    {
+                                      flex: p.openByStage[s.key],
+                                      background: s.hue,
+                                    } as CSSProperties
+                                  }
                                 />
                               ) : null,
                             )}
-                            {p.open < maxOpen && <i className="mix-empty" style={{ flex: maxOpen - p.open }} />}
+                            {p.open < maxOpen && (
+                              <i className="mix-empty" style={{ flex: maxOpen - p.open }} />
+                            )}
                           </>
                         )}
                       </span>
                     </span>
                   </td>
 
-                  <td>{p.idle > 0 ? <span className="warn-num">{p.idle}</span> : <span className="mono-dim">—</span>}</td>
+                  <td>
+                    {p.idle > 0 ? (
+                      <span className="warn-num">{p.idle}</span>
+                    ) : (
+                      <span className="mono-dim">—</span>
+                    )}
+                  </td>
 
-                  <td>{p.reviewRequests > 0 ? <span className="mono-num">{p.reviewRequests}</span> : <span className="mono-dim">—</span>}</td>
+                  <td>
+                    {p.reviewRequests > 0 ? (
+                      <span className="mono-num">{p.reviewRequests}</span>
+                    ) : (
+                      <span className="mono-dim">—</span>
+                    )}
+                  </td>
 
                   <td className="col-mix">
                     <span className="mix">
                       <b>{merged.isPending ? '·' : p.merged}</b>
                       <span className="mix-bar" aria-hidden="true">
-                        <i style={{ flex: Math.max(0.001, p.merged), background: 'var(--stage-approved)' }} />
-                        {p.merged < maxMerged && <i className="mix-empty" style={{ flex: maxMerged - p.merged }} />}
+                        <i
+                          style={{
+                            flex: Math.max(0.001, p.merged),
+                            background: 'var(--stage-approved)',
+                          }}
+                        />
+                        {p.merged < maxMerged && (
+                          <i className="mix-empty" style={{ flex: maxMerged - p.merged }} />
+                        )}
                       </span>
                     </span>
                   </td>
@@ -200,7 +234,11 @@ export function PeoplePage() {
                   </td>
 
                   <td>
-                    {cycle === null ? <span className="mono-dim">—</span> : <span className="mono-num">{formatHours(cycle)}</span>}
+                    {cycle === null ? (
+                      <span className="mono-dim">—</span>
+                    ) : (
+                      <span className="mono-num">{formatHours(cycle)}</span>
+                    )}
                   </td>
                 </tr>
               )

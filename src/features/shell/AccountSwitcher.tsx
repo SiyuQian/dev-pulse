@@ -60,7 +60,9 @@ export function AccountSwitcher() {
         {needsToken && <i className="acct-flag" title="No token saved" />}
         {tokenBad && <i className="acct-flag bad" title="Token rejected by GitHub" />}
         {accounts.length > 1 && <span className="acct-count">{accounts.length}</span>}
-        <span className="acct-caret" aria-hidden="true">▾</span>
+        <span className="acct-caret" aria-hidden="true">
+          ▾
+        </span>
       </button>
 
       {open && (
@@ -82,7 +84,9 @@ export function AccountSwitcher() {
                 <span className="acct-row-name">
                   {profileName(account)}
                   {/* Only a nickname the user actually chose earns a second line of ink. */}
-                  {account.login && !/^Account \d+$/.test(account.label) && <em>{account.label}</em>}
+                  {account.login && !/^Account \d+$/.test(account.label) && (
+                    <em>{account.label}</em>
+                  )}
                 </span>
                 <span className="acct-row-sub">
                   {account.hasToken
@@ -90,7 +94,11 @@ export function AccountSwitcher() {
                     : 'no token — add one in Settings'}
                 </span>
               </span>
-              {account.id === activeId && <span className="acct-check" aria-hidden="true">✓</span>}
+              {account.id === activeId && (
+                <span className="acct-check" aria-hidden="true">
+                  ✓
+                </span>
+              )}
             </button>
           ))}
 

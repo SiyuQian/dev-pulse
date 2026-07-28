@@ -63,19 +63,16 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   const active = activeProfile(store)
   const activeId = active.id
 
-  const patchActive = useCallback(
-    (patch: (profile: Profile) => Profile) => {
-      setStore((prev) => {
-        const next: ProfileStore = {
-          ...prev,
-          profiles: prev.profiles.map((p) => (p.id === prev.activeId ? patch(p) : p)),
-        }
-        saveProfiles(next)
-        return next
-      })
-    },
-    [],
-  )
+  const patchActive = useCallback((patch: (profile: Profile) => Profile) => {
+    setStore((prev) => {
+      const next: ProfileStore = {
+        ...prev,
+        profiles: prev.profiles.map((p) => (p.id === prev.activeId ? patch(p) : p)),
+      }
+      saveProfiles(next)
+      return next
+    })
+  }, [])
 
   const setToken = useCallback(
     (next: string) => {
@@ -93,21 +90,19 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   )
 
   const noteLogin = useCallback(
-    (login: string) => patchActive((profile) => (profile.login === login ? profile : { ...profile, login })),
+    (login: string) =>
+      patchActive((profile) => (profile.login === login ? profile : { ...profile, login })),
     [patchActive],
   )
 
-  const switchAccount = useCallback(
-    (id: string) => {
-      setStore((prev) => {
-        if (!prev.profiles.some((p) => p.id === id) || prev.activeId === id) return prev
-        const next = { ...prev, activeId: id }
-        saveProfiles(next)
-        return next
-      })
-    },
-    [],
-  )
+  const switchAccount = useCallback((id: string) => {
+    setStore((prev) => {
+      if (!prev.profiles.some((p) => p.id === id) || prev.activeId === id) return prev
+      const next = { ...prev, activeId: id }
+      saveProfiles(next)
+      return next
+    })
+  }, [])
 
   const addAccount = useCallback(
     (config: WatchConfig = defaultConfig) => {
@@ -118,26 +113,27 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     [commitStore, store],
   )
 
-  const renameAccount = useCallback(
-    (id: string, label: string) => {
-      setStore((prev) => {
-        const next = {
-          ...prev,
-          profiles: prev.profiles.map((p) => (p.id === id ? { ...p, label: label.trim() || p.label } : p)),
-        }
-        saveProfiles(next)
-        return next
-      })
-    },
-    [],
-  )
+  const renameAccount = useCallback((id: string, label: string) => {
+    setStore((prev) => {
+      const next = {
+        ...prev,
+        profiles: prev.profiles.map((p) =>
+          p.id === id ? { ...p, label: label.trim() || p.label } : p,
+        ),
+      }
+      saveProfiles(next)
+      return next
+    })
+  }, [])
 
   const removeAccount = useCallback(
     (id: string) => {
       const remaining = store.profiles.filter((p) => p.id !== id)
       // Always keep one account around, so there is somewhere to paste a token.
       const profiles = remaining.length > 0 ? remaining : [createProfile('Account 1')]
-      const nextActive = profiles.some((p) => p.id === store.activeId) ? store.activeId : profiles[0].id
+      const nextActive = profiles.some((p) => p.id === store.activeId)
+        ? store.activeId
+        : profiles[0].id
       commitStore({ version: 2, activeId: nextActive, profiles })
       const { [id]: _removed, ...rest } = tokens
       commitTokens(rest)
@@ -172,8 +168,17 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       noteLogin,
     }),
     [
-      accounts, active.config, activeId, addAccount, noteLogin, removeAccount, renameAccount,
-      setConfig, setToken, switchAccount, tokens,
+      accounts,
+      active.config,
+      activeId,
+      addAccount,
+      noteLogin,
+      removeAccount,
+      renameAccount,
+      setConfig,
+      setToken,
+      switchAccount,
+      tokens,
     ],
   )
   return <AppStateContext.Provider value={value}>{children}</AppStateContext.Provider>

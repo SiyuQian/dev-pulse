@@ -1,5 +1,11 @@
 import { useQuery } from '@tanstack/react-query'
-import { fetchMergedPrs, fetchOpenPrs, fetchViewerLogin, fetchViewerRepos, GitHubError } from './github'
+import {
+  fetchMergedPrs,
+  fetchOpenPrs,
+  fetchViewerLogin,
+  fetchViewerRepos,
+  GitHubError,
+} from './github'
 import type { WatchConfig } from '../storage/config'
 
 /**

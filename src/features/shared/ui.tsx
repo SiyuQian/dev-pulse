@@ -12,7 +12,12 @@ export function Avatar({ login, title }: { login: string; title?: string }) {
   const hue = avatarHue(login)
   if (failed || login === 'ghost') {
     return (
-      <span className="avatar" style={{ background: hue }} title={title ?? login} aria-hidden="true">
+      <span
+        className="avatar"
+        style={{ background: hue }}
+        title={title ?? login}
+        aria-hidden="true"
+      >
         {login.slice(0, 2).toUpperCase()}
       </span>
     )
@@ -41,7 +46,10 @@ export function AccountFace({ login, label }: { login?: string; label: string })
   if (login) return <Avatar login={login} title={label} />
   return (
     <span className="avatar acct-blank" title={label} aria-hidden="true">
-      {label.replace(/[^a-zA-Z0-9]/g, '').slice(0, 2).toUpperCase() || '··'}
+      {label
+        .replace(/[^a-zA-Z0-9]/g, '')
+        .slice(0, 2)
+        .toUpperCase() || '··'}
     </span>
   )
 }
@@ -55,7 +63,9 @@ export function AvatarRow({ logins, empty = '—' }: { logins: string[]; empty?:
       {shown.map((login) => (
         <Avatar key={login} login={login} />
       ))}
-      {logins.length > shown.length && <span className="avatar-more">+{logins.length - shown.length}</span>}
+      {logins.length > shown.length && (
+        <span className="avatar-more">+{logins.length - shown.length}</span>
+      )}
     </span>
   )
 }
@@ -80,7 +90,8 @@ export function AgeBar({ days, staleDays }: { days: number; staleDays: number })
 export function Diff({ additions, deletions }: { additions: number; deletions: number }) {
   return (
     <span className="diff">
-      <span className="add">+{formatCompact(additions)}</span> <span className="del">−{formatCompact(deletions)}</span>
+      <span className="add">+{formatCompact(additions)}</span>{' '}
+      <span className="del">−{formatCompact(deletions)}</span>
     </span>
   )
 }
@@ -104,12 +115,26 @@ export function CiDot({ status }: { status: string | null }) {
   )
 }
 
-export function Tag({ kind, children }: { kind: 'you' | 'idle' | 'ci' | 'ready'; children: ReactNode }) {
+export function Tag({
+  kind,
+  children,
+}: {
+  kind: 'you' | 'idle' | 'ci' | 'ready'
+  children: ReactNode
+}) {
   return <span className={`tag ${kind}`}>{children}</span>
 }
 
 /** Section header: title, a derived sub-number, and optional right-side controls. */
-export function SectionHead({ title, sub, children }: { title: string; sub?: string; children?: ReactNode }) {
+export function SectionHead({
+  title,
+  sub,
+  children,
+}: {
+  title: string
+  sub?: string
+  children?: ReactNode
+}) {
   return (
     <div className="sec-head">
       <h2>{title}</h2>
@@ -121,7 +146,10 @@ export function SectionHead({ title, sub, children }: { title: string; sub?: str
 
 /** Segmented control. Values are compared by identity, so any union works. */
 export function Seg<T extends string | number>({
-  value, options, onChange, label,
+  value,
+  options,
+  onChange,
+  label,
 }: {
   value: T
   options: { value: T; label: string }[]
@@ -131,7 +159,12 @@ export function Seg<T extends string | number>({
   return (
     <div className="seg" role="group" aria-label={label}>
       {options.map((o) => (
-        <button key={o.value} type="button" aria-pressed={value === o.value} onClick={() => onChange(o.value)}>
+        <button
+          key={o.value}
+          type="button"
+          aria-pressed={value === o.value}
+          onClick={() => onChange(o.value)}
+        >
           {o.label}
         </button>
       ))}
@@ -145,7 +178,11 @@ export function Grid({ cols, children }: { cols: 2 | 3 | 4; children: ReactNode 
 }
 
 export function Cell({
-  title, note, count, wide, children,
+  title,
+  note,
+  count,
+  wide,
+  children,
 }: {
   title: string
   note?: string
@@ -171,7 +208,11 @@ export function Cell({
  * tells you nothing without a baseline to compare against.
  */
 export function Stat({
-  value, unit, delta, tone = 'flat', mine,
+  value,
+  unit,
+  delta,
+  tone = 'flat',
+  mine,
 }: {
   value: ReactNode
   unit?: string
@@ -189,7 +230,13 @@ export function Stat({
 }
 
 /** Vertical bars with value labels above and period labels below. */
-export function Bars({ series, highlightLast = true }: { series: { label: string; value: number }[]; highlightLast?: boolean }) {
+export function Bars({
+  series,
+  highlightLast = true,
+}: {
+  series: { label: string; value: number }[]
+  highlightLast?: boolean
+}) {
   const max = Math.max(1, ...series.map((s) => s.value))
   return (
     <>
@@ -220,7 +267,12 @@ export function LoadList({ children }: { children: ReactNode }) {
 }
 
 export function LoadRow({
-  login, sub, value, ratio, hue, isViewer,
+  login,
+  sub,
+  value,
+  ratio,
+  hue,
+  isViewer,
 }: {
   login: string
   sub?: ReactNode
@@ -254,7 +306,13 @@ export function Queue({ children, empty }: { children: ReactNode; empty: string 
 }
 
 export function QueueRow({
-  url, repo, number, title, author, meta, tone,
+  url,
+  repo,
+  number,
+  title,
+  author,
+  meta,
+  tone,
 }: {
   url: string
   repo: string
