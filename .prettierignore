@@ -1,0 +1,9 @@
+dist
+node_modules
+package-lock.json
+skills-lock.json
+.agents
+.claude
+
+# Static design references, served verbatim — not maintained as source.
+public

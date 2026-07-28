@@ -29,7 +29,11 @@ A team PR activity dashboard. See your team's pull requests at a glance — what
 npm install
 npm run dev      # http://localhost:5173
 npm run build    # static production build in dist/
+npm run check    # format, lint, typecheck, and tests — the same gates CI runs
 ```
+
+Formatting is handled by Prettier (`npm run format`) and linting by [oxlint](https://oxc.rs)
+(`npm run lint`). CI runs both on every pull request.
 
 ### Deploy
 
