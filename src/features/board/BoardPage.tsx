@@ -1,167 +1,240 @@
-import { useMemo, useState, type CSSProperties } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useOpenPrs, useViewer } from '../../api/queries'
 import { useAppState } from '../../state/AppState'
 import type { PullRequest } from '../../api/types'
-import { Avatar } from '../shared/ui'
+import { AgeBar, AvatarRow, Avatar, CiDot, Diff, Empty, SectionHead, Seg, Tag } from '../shared/ui'
 import { formatDays, median } from '../shared/format'
+import { STAGES, ageDays, ciFailing, idleDays, repoShort, stageOf, type StageKey } from '../shared/prs'
 
-type StageKey = 'draft' | 'review' | 'changes' | 'approved'
-type Filter = 'all' | 'mine' | 'stale'
+type Filter = 'all' | 'mine' | 'idle' | 'ci'
 
-const STAGES: { key: StageKey; label: string; hue: string; tint: string; edge: string }[] = [
-  { key: 'draft', label: 'Draft', hue: 'var(--stage-draft)', tint: '#f2f0f7', edge: '#e3dff0' },
-  { key: 'review', label: 'Needs review', hue: 'var(--stage-review)', tint: '#edf2f7', edge: '#dce6f0' },
-  { key: 'changes', label: 'Changes requested', hue: 'var(--stage-changes)', tint: '#f9f0ee', edge: '#f0dfdb' },
-  { key: 'approved', label: 'Approved, ready to merge', hue: 'var(--stage-approved)', tint: '#edf5f0', edge: '#dceae2' },
+const FILTERS: { value: Filter; label: string }[] = [
+  { value: 'all', label: 'All' },
+  { value: 'mine', label: 'Mine' },
+  { value: 'idle', label: 'Idle' },
+  { value: 'ci', label: 'CI red' },
 ]
 
-function stageOf(pr: PullRequest): StageKey {
-  if (pr.isDraft) return 'draft'
-  if (pr.reviewDecision === 'CHANGES_REQUESTED') return 'changes'
-  if (pr.reviewDecision === 'APPROVED') return 'approved'
-  return 'review'
+interface Row {
+  pr: PullRequest
+  stage: StageKey
+  idle: number
+  needsMyReview: boolean
+  isMine: boolean
 }
 
-// Time since the last activity. The GraphQL payload has no stage-transition
-// timeline, so this is the closest honest proxy for "stuck in this stage".
-function idleDays(pr: PullRequest): number {
-  return (Date.now() - new Date(pr.updatedAt).getTime()) / 86_400_000
-}
+/**
+ * J/K to move, Enter to open, / to search — the row list is flat across stage
+ * groups so navigation crosses group boundaries without a second keystroke.
+ */
+function useRowNav(rows: Row[], searchRef: React.RefObject<HTMLInputElement | null>) {
+  const [cursor, setCursor] = useState(-1)
 
-function PrCard({ pr, staleDays, needsMyReview }: { pr: PullRequest; staleDays: number; needsMyReview: boolean }) {
-  const idle = idleDays(pr)
-  const stale = idle >= staleDays
-  const repoName = pr.repo.split('/')[1] ?? pr.repo
-  const ciBad = pr.ciStatus === 'FAILURE' || pr.ciStatus === 'ERROR'
-  const ciPending = pr.ciStatus === 'PENDING' || pr.ciStatus === 'EXPECTED'
+  // Keep the cursor in range as filters change the row set.
+  useEffect(() => {
+    setCursor((c) => (c >= rows.length ? rows.length - 1 : c))
+  }, [rows.length])
 
-  return (
-    <a
-      className={`pr-card${stale ? ' is-stale' : ''}`}
-      href={pr.url}
-      target="_blank"
-      rel="noreferrer"
-      style={{ '--idle': `${Math.min(100, (idle / staleDays) * 100)}%` } as CSSProperties}
-    >
-      <div className="pr-card-top">
-        <span className="pr-card-repo">{repoName}</span>
-        <span className="pr-card-num">#{pr.number}</span>
-      </div>
-      {needsMyReview && <span className="flag flag-mine">Waiting on you</span>}
-      {stale && <span className="flag flag-stale">Idle {formatDays(idle)}</span>}
-      {ciBad && <span className="flag flag-ci-bad">CI failing</span>}
-      {ciPending && <span className="flag flag-ci-pending">CI running</span>}
-      <p className="pr-card-title">{pr.title}</p>
-      <div className="pr-card-foot">
-        <Avatar login={pr.author} />
-        <span className="pr-card-who">{pr.author}</span>
-        <span className="pr-card-meta">
-          <span className="add">+{pr.additions}</span> <span className="del">−{pr.deletions}</span> · {formatDays(idle)}
-        </span>
-      </div>
-      <div className="heat" />
-    </a>
-  )
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      const target = e.target as HTMLElement | null
+      const typing = target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA')
+
+      if (e.key === '/' && !typing) {
+        e.preventDefault()
+        searchRef.current?.focus()
+        return
+      }
+      if (typing) {
+        if (e.key === 'Escape') (target as HTMLInputElement).blur()
+        return
+      }
+      if (rows.length === 0) return
+
+      if (e.key === 'j' || e.key === 'ArrowDown') {
+        e.preventDefault()
+        setCursor((c) => Math.min(rows.length - 1, c + 1))
+      } else if (e.key === 'k' || e.key === 'ArrowUp') {
+        e.preventDefault()
+        setCursor((c) => Math.max(0, c - 1))
+      } else if (e.key === 'Enter' && cursor >= 0) {
+        window.open(rows[cursor].pr.url, '_blank', 'noreferrer')
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [rows, cursor, searchRef])
+
+  return [cursor, setCursor] as const
 }
 
 export function BoardPage() {
   const { token, config } = useAppState()
   const { data: viewer } = useViewer(token)
-  const { data, isPending, error, refetch, isFetching } = useOpenPrs(token, config)
+  const { data, isPending, error } = useOpenPrs(token, config)
   const [filter, setFilter] = useState<Filter>('all')
-
-  const prs = data?.prs
+  const [query, setQuery] = useState('')
+  const searchRef = useRef<HTMLInputElement>(null)
   const staleDays = config.staleDays
+
+  const allRows = useMemo<Row[]>(() => {
+    const prs = data?.prs ?? []
+    return prs.map((pr) => ({
+      pr,
+      stage: stageOf(pr),
+      idle: idleDays(pr),
+      needsMyReview: viewer !== undefined && !pr.isDraft && pr.requestedReviewers.includes(viewer),
+      isMine: pr.author === viewer,
+    }))
+  }, [data?.prs, viewer])
+
   const visible = useMemo(() => {
-    if (!prs) return []
-    return prs.filter((pr) => {
-      if (filter === 'mine') {
-        return viewer !== undefined && (pr.author === viewer || pr.requestedReviewers.includes(viewer))
+    const q = query.trim().toLowerCase()
+    return allRows.filter((row) => {
+      if (q && !`${row.pr.title} ${row.pr.repo} ${row.pr.author} #${row.pr.number}`.toLowerCase().includes(q)) {
+        return false
       }
-      if (filter === 'stale') return idleDays(pr) >= staleDays
+      if (filter === 'mine') return row.isMine || row.needsMyReview
+      if (filter === 'idle') return row.idle >= staleDays
+      if (filter === 'ci') return ciFailing(row.pr)
       return true
     })
-  }, [prs, filter, viewer, staleDays])
+  }, [allRows, filter, query, staleDays])
+
+  // Grouped for display, flattened in the same order for keyboard navigation.
+  const groups = useMemo(
+    () =>
+      STAGES.map((stage) => ({
+        ...stage,
+        rows: visible.filter((r) => r.stage === stage.key).sort((a, b) => b.idle - a.idle),
+      })).filter((g) => g.rows.length > 0),
+    [visible],
+  )
+  const flat = useMemo(() => groups.flatMap((g) => g.rows), [groups])
+  const [cursor, setCursor] = useRowNav(flat, searchRef)
 
   if (!token) {
-    return <p className="empty">No GitHub token configured. Add one in <Link to="/settings">Settings</Link>.</p>
+    return (
+      <Empty>
+        No GitHub token configured. Add one in <Link to="/settings">Settings</Link>.
+      </Empty>
+    )
   }
   if (config.repos.length === 0 && config.users.length === 0) {
-    return <p className="empty">Watchlist is empty. Add repos or people in <Link to="/settings">Settings</Link>.</p>
+    return (
+      <Empty>
+        Watchlist is empty. Add repos or people in <Link to="/settings">Settings</Link>.
+      </Empty>
+    )
   }
-  if (error) return <p className="empty error">Failed to load PRs: {error.message}</p>
-  if (isPending || !prs) return <p className="empty">Loading pull requests…</p>
+  if (error) return <Empty error>Failed to load PRs: {error.message}</Empty>
+  if (isPending || !data) return <Empty>Loading pull requests…</Empty>
 
-  const needsMe = viewer ? prs.filter((pr) => pr.requestedReviewers.includes(viewer)).length : 0
-  const staleCount = prs.filter((pr) => idleDays(pr) >= staleDays).length
+  const idleCount = allRows.filter((r) => r.idle >= staleDays).length
+  const medianIdle = median(allRows.map((r) => r.idle))
+  const sub = [
+    `${allRows.length} open`,
+    medianIdle === null ? null : `median idle ${formatDays(medianIdle)}`,
+    idleCount > 0 ? `${idleCount} past ${staleDays}d` : null,
+  ]
+    .filter(Boolean)
+    .join(' · ')
 
   return (
     <div className="fade-in">
-      <div className="flow-head">
-        <div>
-          <h2>Pipeline</h2>
-          <p className="flow-summary">
-            {prs.length} open
-            {needsMe > 0 && <> · <span className="attn">{needsMe} waiting on you</span></>}
-            {staleCount > 0 && <> · {staleCount} idle past {staleDays}d</>}
-          </p>
-        </div>
-        <div className="flow-controls">
-          <div className="filters">
-            {([['all', 'All'], ['mine', 'Mine'], ['stale', 'Idle only']] as const).map(([key, label]) => (
-              <button key={key} aria-pressed={filter === key} onClick={() => setFilter(key)}>
-                {label}
-              </button>
-            ))}
-          </div>
-          {data.rateLimit.limit > 0 && (
-            <span className="rate-limit">quota {data.rateLimit.remaining}/{data.rateLimit.limit}</span>
-          )}
-          <button className="secondary" onClick={() => refetch()} disabled={isFetching}>
-            {isFetching ? 'Refreshing…' : 'Refresh'}
-          </button>
-        </div>
-      </div>
+      <SectionHead title="Pipeline" sub={sub}>
+        <input
+          ref={searchRef}
+          className="search"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Filter…  /"
+          aria-label="Filter pull requests"
+        />
+        <Seg label="Filter" value={filter} options={FILTERS} onChange={setFilter} />
+      </SectionHead>
 
-      {prs.length === 0 ? (
-        <p className="empty">No open PRs in the watched repos and people. 🎉</p>
+      {allRows.length === 0 ? (
+        <Empty>No open PRs in the watched repos and people. 🎉</Empty>
+      ) : flat.length === 0 ? (
+        <Empty>No PRs match this filter.</Empty>
       ) : (
-        <div className="flow-cols">
-          {STAGES.map((stage) => {
-            const inStage = visible
-              .filter((pr) => stageOf(pr) === stage.key)
-              .sort((a, b) => idleDays(b) - idleDays(a))
-            const medianIdle = median(inStage.map(idleDays))
+        <table className="prs">
+          <thead>
+            <tr>
+              <th className="col-title">Pull request</th>
+              <th>Author</th>
+              <th>Reviewers</th>
+              <th>CI</th>
+              <th>Diff</th>
+              <th className="col-idle">Idle</th>
+            </tr>
+          </thead>
+          {groups.map((group) => {
+            const groupMedian = median(group.rows.map((r) => r.idle))
             return (
-              <section
-                key={stage.key}
-                className="flow-col"
-                style={{ '--hue': stage.hue, '--tint': stage.tint, '--edge': stage.edge } as CSSProperties}
-              >
-                <div className="flow-col-head">
-                  <span className="dot" />
-                  <h3>{stage.label}</h3>
-                  <span className="count">{inStage.length}</span>
-                </div>
-                {medianIdle === null ? (
-                  <p className="flow-col-empty">Nothing here.</p>
-                ) : (
-                  <p className="flow-col-idle">median idle {formatDays(medianIdle)}</p>
-                )}
-                {inStage.map((pr) => (
-                  <PrCard
-                    key={pr.id}
-                    pr={pr}
-                    staleDays={staleDays}
-                    needsMyReview={viewer !== undefined && pr.requestedReviewers.includes(viewer)}
-                  />
-                ))}
-              </section>
+              <tbody key={group.key}>
+                <tr className="group">
+                  <th colSpan={6} scope="colgroup">
+                    <span className="swatch" style={{ background: group.hue }} />
+                    {group.label}
+                    <span className="c">{group.rows.length}</span>
+                    {groupMedian !== null && <span className="c">median idle {formatDays(groupMedian)}</span>}
+                  </th>
+                </tr>
+                {group.rows.map((row) => {
+                  const index = flat.indexOf(row)
+                  return (
+                    <tr
+                      key={row.pr.id}
+                      className={`${cursor === index ? 'is-cursor ' : ''}${row.needsMyReview ? 'is-mine' : ''}`}
+                      onMouseEnter={() => setCursor(index)}
+                      onClick={(e) => {
+                        // Let the real anchor handle its own activation.
+                        if ((e.target as HTMLElement).closest('a')) return
+                        window.open(row.pr.url, '_blank', 'noreferrer')
+                      }}
+                    >
+                      <td className="col-title">
+                        <a href={row.pr.url} target="_blank" rel="noreferrer" className="title">
+                          {row.pr.title}
+                        </a>
+                        <span className="slug">
+                          {repoShort(row.pr.repo)} #{row.pr.number} · opened {formatDays(ageDays(row.pr))} ago
+                          {row.needsMyReview && <Tag kind="you">yours to review</Tag>}
+                        </span>
+                      </td>
+                      <td>
+                        <span className="who">
+                          <Avatar login={row.pr.author} />
+                          <span>{row.pr.author}</span>
+                        </span>
+                      </td>
+                      <td>
+                        <AvatarRow logins={row.pr.requestedReviewers} empty="none yet" />
+                      </td>
+                      <td>
+                        <CiDot status={row.pr.ciStatus} />
+                      </td>
+                      <td>
+                        <Diff additions={row.pr.additions} deletions={row.pr.deletions} />
+                      </td>
+                      <td className="col-idle">
+                        <AgeBar days={row.idle} staleDays={staleDays} />
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
             )
           })}
-        </div>
+        </table>
       )}
+
+      <p className="hint-bar">
+        <kbd>J</kbd> <kbd>K</kbd> move · <kbd>Enter</kbd> open on GitHub · <kbd>/</kbd> filter
+      </p>
     </div>
   )
 }

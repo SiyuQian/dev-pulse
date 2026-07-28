@@ -1,41 +1,24 @@
 import { useMemo, useState, type CSSProperties } from 'react'
 import { Link } from 'react-router-dom'
-import { useOpenPrs, useMergedPrs, useViewer } from '../../api/queries'
+import { useMergedPrs, useOpenPrs, useViewer } from '../../api/queries'
 import { useAppState } from '../../state/AppState'
-import type { PullRequest } from '../../api/types'
-import { Avatar } from '../shared/ui'
-import { daysSince, formatCompact, formatHours, median } from '../shared/format'
-
-type StageKey = 'draft' | 'review' | 'changes' | 'approved'
-
-// The board's four stages, reused here as a per-person mix bar so a big open
-// count reads as "what kind of open" at a glance, not just a number.
-const STAGES: { key: StageKey; label: string; hue: string }[] = [
-  { key: 'review', label: 'Needs review', hue: 'var(--stage-review)' },
-  { key: 'changes', label: 'Changes requested', hue: 'var(--stage-changes)' },
-  { key: 'approved', label: 'Approved', hue: 'var(--stage-approved)' },
-  { key: 'draft', label: 'Draft', hue: 'var(--stage-draft)' },
-]
-
-function stageOf(pr: PullRequest): StageKey {
-  if (pr.isDraft) return 'draft'
-  if (pr.reviewDecision === 'CHANGES_REQUESTED') return 'changes'
-  if (pr.reviewDecision === 'APPROVED') return 'approved'
-  return 'review'
-}
+import { Avatar, Cell, Empty, Grid, SectionHead, Seg, Stat } from '../shared/ui'
+import { formatCompact, formatHours, median } from '../shared/format'
+import { STAGES, idleDays, stageOf, type StageKey } from '../shared/prs'
 
 const WINDOWS = [7, 14, 28] as const
 type Window = (typeof WINDOWS)[number]
 
 interface Person {
   login: string
-  open: PullRequest[]
+  open: number
   openByStage: Record<StageKey, number>
+  idle: number
+  reviewRequests: number
   merged: number
   additions: number
   deletions: number
   cycleTimes: number[]
-  stale: number
 }
 
 export function PeoplePage() {
@@ -44,10 +27,7 @@ export function PeoplePage() {
   const [days, setDays] = useState<Window>(28)
   // Stable per (mount, window) so the merged-PR query key doesn't churn.
   const [mountedAt] = useState(() => Date.now())
-  const since = useMemo(
-    () => new Date(mountedAt - days * 86_400_000).toISOString(),
-    [mountedAt, days],
-  )
+  const since = useMemo(() => new Date(mountedAt - days * 86_400_000).toISOString(), [mountedAt, days])
 
   const open = useOpenPrs(token, config)
   const merged = useMergedPrs(token, config, since)
@@ -60,23 +40,26 @@ export function PeoplePage() {
       if (!p) {
         p = {
           login,
-          open: [],
+          open: 0,
           openByStage: { draft: 0, review: 0, changes: 0, approved: 0 },
+          idle: 0,
+          reviewRequests: 0,
           merged: 0,
           additions: 0,
           deletions: 0,
           cycleTimes: [],
-          stale: 0,
         }
         byLogin.set(login, p)
       }
       return p
     }
     for (const pr of open.data?.prs ?? []) {
-      const p = get(pr.author)
-      p.open.push(pr)
-      p.openByStage[stageOf(pr)] += 1
-      if (daysSince(pr.updatedAt) >= staleDays) p.stale += 1
+      const author = get(pr.author)
+      author.open += 1
+      author.openByStage[stageOf(pr)] += 1
+      if (idleDays(pr) >= staleDays) author.idle += 1
+      // Reviewers count as active people even with no open PRs of their own.
+      for (const reviewer of pr.requestedReviewers) get(reviewer).reviewRequests += 1
     }
     for (const pr of merged.data ?? []) {
       const p = get(pr.author)
@@ -86,111 +69,144 @@ export function PeoplePage() {
       p.cycleTimes.push(pr.cycleTimeHours)
     }
     return [...byLogin.values()].sort(
-      (a, b) => b.open.length - a.open.length || b.merged - a.merged || a.login.localeCompare(b.login),
+      (a, b) => b.open - a.open || b.merged - a.merged || a.login.localeCompare(b.login),
     )
   }, [open.data, merged.data, staleDays])
 
   if (!token) {
-    return <p className="empty">No GitHub token configured. Add one in <Link to="/settings">Settings</Link>.</p>
+    return (
+      <Empty>
+        No GitHub token configured. Add one in <Link to="/settings">Settings</Link>.
+      </Empty>
+    )
   }
   if (config.repos.length === 0 && config.users.length === 0) {
-    return <p className="empty">Watchlist is empty. Add repos or people in <Link to="/settings">Settings</Link>.</p>
+    return (
+      <Empty>
+        Watchlist is empty. Add repos or people in <Link to="/settings">Settings</Link>.
+      </Empty>
+    )
   }
-  if (open.error) return <p className="empty error">Failed to load activity: {open.error.message}</p>
-  if (open.isPending || !open.data) return <p className="empty">Loading team activity…</p>
+  if (open.error) return <Empty error>Failed to load activity: {open.error.message}</Empty>
+  if (open.isPending || !open.data) return <Empty>Loading team activity…</Empty>
 
   const totalOpen = open.data.prs.length
   const totalMerged = merged.data?.length ?? 0
-  const maxOpen = Math.max(1, ...people.map((p) => p.open.length))
+  const maxOpen = Math.max(1, ...people.map((p) => p.open))
   const maxMerged = Math.max(1, ...people.map((p) => p.merged))
-  const allCycles = people.flatMap((p) => p.cycleTimes)
-  const medianCycle = median(allCycles)
+  const medianCycle = median(people.flatMap((p) => p.cycleTimes))
+  const carrying = people.filter((p) => p.open > 0).length
 
   return (
     <div className="fade-in">
-      <div className="flow-head">
-        <div>
-          <h2>People</h2>
-          <p className="flow-summary">
-            {people.length} active · {totalOpen} open now ·{' '}
-            {merged.isPending ? 'counting merges…' : `${totalMerged} merged in ${days}d`}
-          </p>
-        </div>
-        <div className="flow-controls">
-          <div className="filters" role="group" aria-label="Merged window">
-            {WINDOWS.map((w) => (
-              <button key={w} aria-pressed={days === w} onClick={() => setDays(w)}>
-                {w}d
-              </button>
-            ))}
-          </div>
-        </div>
-      </div>
+      <SectionHead title="People" sub={`${people.length} active · ${totalOpen} open now`}>
+        <Seg
+          label="Merged window"
+          value={days}
+          options={WINDOWS.map((w) => ({ value: w, label: `${w}d` }))}
+          onChange={setDays}
+        />
+      </SectionHead>
 
-      <div className="stat-tiles">
-        <div className="tile"><strong>{totalOpen}</strong><span>open right now</span></div>
-        <div className="tile"><strong>{merged.isPending ? '·' : totalMerged}</strong><span>merged in {days}d</span></div>
-        <div className="tile"><strong>{people.filter((p) => p.open.length > 0).length}</strong><span>people with open work</span></div>
-        <div className="tile"><strong>{medianCycle === null ? '·' : formatHours(medianCycle)}</strong><span>median cycle time</span></div>
-      </div>
+      <Grid cols={4}>
+        <Cell title="Open right now" note="across the watchlist">
+          <Stat value={totalOpen} unit="PRs" />
+        </Cell>
+        <Cell title={`Merged · ${days}d`} note={merged.isPending ? 'counting…' : `${(totalMerged / (days / 7)).toFixed(1)} per week`}>
+          <Stat value={merged.isPending ? '·' : totalMerged} unit="PRs" />
+        </Cell>
+        <Cell title="People with open work" note={`of ${people.length} active`}>
+          <Stat value={carrying} unit="people" />
+        </Cell>
+        <Cell title="Median cycle time" note="open → merge">
+          <Stat value={medianCycle === null ? '·' : formatHours(medianCycle)} />
+        </Cell>
+      </Grid>
 
       {people.length === 0 ? (
-        <p className="empty">No open or recently merged PRs for the watched repos and people. 🎉</p>
+        <Empty>No open or recently merged PRs for the watched repos and people. 🎉</Empty>
       ) : (
-        <div className="people" role="table" aria-label="Per-person PR activity">
-          <div className="people-head" role="row">
-            <span role="columnheader">Person</span>
-            <span role="columnheader">Open now</span>
-            <span role="columnheader">Merged · {days}d</span>
-            <span role="columnheader">Shipped</span>
-            <span role="columnheader">Cycle</span>
-          </div>
-          {people.map((p) => {
-            const cycle = median(p.cycleTimes)
-            const isViewer = p.login === viewer
-            return (
-              <div className={`person${isViewer ? ' is-you' : ''}`} role="row" key={p.login}>
-                <span className="person-who" role="cell">
-                  <Avatar login={p.login} />
-                  <span className="person-name">{p.login}{isViewer && <em> you</em>}</span>
-                </span>
+        <table className="prs people-table">
+          <thead>
+            <tr>
+              <th className="col-person">Person</th>
+              <th className="col-mix">Open now</th>
+              <th>Idle</th>
+              <th>Review requests</th>
+              <th className="col-mix">Merged · {days}d</th>
+              <th>Shipped</th>
+              <th>Median cycle</th>
+            </tr>
+          </thead>
+          <tbody>
+            {people.map((p) => {
+              const cycle = median(p.cycleTimes)
+              const isViewer = p.login === viewer
+              return (
+                <tr key={p.login} className={isViewer ? 'is-mine' : undefined}>
+                  <td className="col-person">
+                    <span className="who">
+                      <Avatar login={p.login} />
+                      <span>
+                        {p.login}
+                        {isViewer && <em className="you-tag">you</em>}
+                      </span>
+                    </span>
+                  </td>
 
-                <span className="person-open" role="cell">
-                  <span className="person-open-n">{p.open.length}</span>
-                  <span className="stage-bar" aria-hidden="true">
-                    {STAGES.map((s) =>
-                      p.openByStage[s.key] > 0 ? (
-                        <i
-                          key={s.key}
-                          title={`${p.openByStage[s.key]} ${s.label}`}
-                          style={{ flex: p.openByStage[s.key], background: s.hue } as CSSProperties}
-                        />
-                      ) : null,
-                    )}
-                    {p.open.length === 0 && <i className="stage-empty" style={{ flex: maxOpen }} />}
-                  </span>
-                  {p.stale > 0 && <span className="person-stale">{p.stale} idle</span>}
-                </span>
+                  <td className="col-mix">
+                    <span className="mix">
+                      <b>{p.open}</b>
+                      <span className="mix-bar" aria-hidden="true">
+                        {p.open === 0 ? (
+                          <i className="mix-empty" style={{ flex: maxOpen }} />
+                        ) : (
+                          <>
+                            {STAGES.map((s) =>
+                              p.openByStage[s.key] > 0 ? (
+                                <i
+                                  key={s.key}
+                                  title={`${p.openByStage[s.key]} ${s.label}`}
+                                  style={{ flex: p.openByStage[s.key], background: s.hue } as CSSProperties}
+                                />
+                              ) : null,
+                            )}
+                            {p.open < maxOpen && <i className="mix-empty" style={{ flex: maxOpen - p.open }} />}
+                          </>
+                        )}
+                      </span>
+                    </span>
+                  </td>
 
-                <span className="person-merged" role="cell">
-                  <span className="person-merged-n">{merged.isPending ? '·' : p.merged}</span>
-                  <span className="load-track" aria-hidden="true">
-                    <i style={{ width: `${(p.merged / maxMerged) * 100}%`, background: 'var(--stage-approved)' }} />
-                  </span>
-                </span>
+                  <td>{p.idle > 0 ? <span className="warn-num">{p.idle}</span> : <span className="mono-dim">—</span>}</td>
 
-                <span className="person-lines" role="cell">
-                  <span className="add">+{formatCompact(p.additions)}</span>{' '}
-                  <span className="del">−{formatCompact(p.deletions)}</span>
-                </span>
+                  <td>{p.reviewRequests > 0 ? <span className="mono-num">{p.reviewRequests}</span> : <span className="mono-dim">—</span>}</td>
 
-                <span className="person-cycle" role="cell">
-                  {cycle === null ? '·' : formatHours(cycle)}
-                </span>
-              </div>
-            )
-          })}
-        </div>
+                  <td className="col-mix">
+                    <span className="mix">
+                      <b>{merged.isPending ? '·' : p.merged}</b>
+                      <span className="mix-bar" aria-hidden="true">
+                        <i style={{ flex: Math.max(0.001, p.merged), background: 'var(--stage-approved)' }} />
+                        {p.merged < maxMerged && <i className="mix-empty" style={{ flex: maxMerged - p.merged }} />}
+                      </span>
+                    </span>
+                  </td>
+
+                  <td>
+                    <span className="diff">
+                      <span className="add">+{formatCompact(p.additions)}</span>{' '}
+                      <span className="del">−{formatCompact(p.deletions)}</span>
+                    </span>
+                  </td>
+
+                  <td>
+                    {cycle === null ? <span className="mono-dim">—</span> : <span className="mono-num">{formatHours(cycle)}</span>}
+                  </td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
       )}
     </div>
   )
