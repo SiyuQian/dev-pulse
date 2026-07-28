@@ -1,5 +1,7 @@
-import { useOpenPrs, useViewer } from '../../api/queries'
+import { useOpenPrs } from '../../api/queries'
 import { useAppState } from '../../state/AppState'
+import { AccountSwitcher } from './AccountSwitcher'
+import { scopeSummary } from '../shared/format'
 
 /**
  * Watchlist scope, identity, and the two operational facts that matter when
@@ -8,7 +10,6 @@ import { useAppState } from '../../state/AppState'
  */
 export function TopBar() {
   const { token, config } = useAppState()
-  const { data: viewer } = useViewer(token)
   const { data, isFetching, refetch, dataUpdatedAt, error } = useOpenPrs(token, config)
 
   // Pages keep rendering cached rows when a refetch fails, so the freshness
@@ -19,15 +20,12 @@ export function TopBar() {
   const updatedLabel = updatedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
   const rate = data?.rateLimit
   const quotaRatio = rate && rate.limit > 0 ? rate.remaining / rate.limit : null
-  const scope = [
-    config.repos.length > 0 ? `${config.repos.length} repo${config.repos.length === 1 ? '' : 's'}` : null,
-    config.users.length > 0 ? `${config.users.length} ${config.users.length === 1 ? 'person' : 'people'}` : null,
-  ].filter(Boolean)
+  const scope = scopeSummary(config.repos, config.users)
 
   return (
     <header className="top">
-      {scope.length > 0 && <span className="crumbs">{scope.join(' · ')}</span>}
-      {viewer && <span className="crumbs">@{viewer}</span>}
+      <AccountSwitcher />
+      {scope && <span className="crumbs">{scope}</span>}
 
       <span className="top-spacer" />
 

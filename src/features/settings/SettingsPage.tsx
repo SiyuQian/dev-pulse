@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useAppState } from '../../state/AppState'
+import { useAppState, type Account } from '../../state/AppState'
 import { useViewer, useViewerRepos } from '../../api/queries'
-import { decodeShareFragment, encodeShareFragment, isLogin, isRepoRef } from '../../storage/config'
-import { Cell } from '../shared/ui'
+import { decodeShareFragment, encodeShareFragment, isLogin, isRepoRef, profileName } from '../../storage/config'
+import { AccountFace, Cell } from '../shared/ui'
+import { scopeSummary } from '../shared/format'
 
 function ListEditor({
   label, placeholder, items, validate, onChange, hint,
@@ -177,8 +178,87 @@ function RepoMultiSelect({
   )
 }
 
+function AccountRow({ account, isActive }: { account: Account; isActive: boolean }) {
+  const { switchAccount, renameAccount, removeAccount } = useAppState()
+  const [draft, setDraft] = useState(account.label)
+  const [confirming, setConfirming] = useState(false)
+
+  useEffect(() => { setDraft(account.label) }, [account.label])
+
+  function commitLabel() {
+    const next = draft.trim()
+    if (!next) setDraft(account.label)
+    else if (next !== account.label) renameAccount(account.id, next)
+  }
+
+  return (
+    <li className={isActive ? 'is-active' : undefined}>
+      <AccountFace login={account.login} label={account.label} />
+      <div className="acct-cell-main">
+        <input
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onBlur={commitLabel}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') { e.preventDefault(); e.currentTarget.blur() }
+            if (e.key === 'Escape') setDraft(account.label)
+          }}
+          aria-label={`Name for ${profileName(account)}`}
+        />
+        <span className="acct-cell-sub">
+          {account.login ? `@${account.login} · ` : ''}
+          {account.hasToken ? 'token saved' : 'no token'} ·{' '}
+          {scopeSummary(account.config.repos, account.config.users, 'no watchlist yet')}
+        </span>
+      </div>
+      {isActive ? (
+        <span className="acct-cell-badge">active</span>
+      ) : (
+        <button type="button" className="secondary" onClick={() => switchAccount(account.id)}>
+          Use
+        </button>
+      )}
+      {confirming ? (
+        <span className="acct-cell-confirm">
+          <button type="button" onClick={() => removeAccount(account.id)}>Delete</button>
+          <button type="button" className="secondary" onClick={() => setConfirming(false)}>Keep</button>
+        </span>
+      ) : (
+        <button
+          type="button"
+          className="secondary"
+          onClick={() => setConfirming(true)}
+          aria-label={`Remove ${profileName(account)}`}
+        >
+          Remove
+        </button>
+      )}
+    </li>
+  )
+}
+
+function AccountsCell() {
+  const { accounts, activeId, addAccount } = useAppState()
+  return (
+    <Cell title="Accounts" count={accounts.length}>
+      <p className="field-hint">
+        Each account keeps its own token and its own watchlist. Switching accounts — here or from the top bar —
+        swaps both, and every view reloads against the new token.
+      </p>
+      <ul className="accounts">
+        {accounts.map((account) => (
+          <AccountRow key={account.id} account={account} isActive={account.id === activeId} />
+        ))}
+      </ul>
+      <button type="button" onClick={() => addAccount()}>
+        Add account
+      </button>
+    </Cell>
+  )
+}
+
 export function SettingsPage() {
-  const { token, setToken, config, setConfig } = useAppState()
+  const { token, setToken, config, setConfig, accounts, activeId, addAccount } = useAppState()
   const [tokenDraft, setTokenDraft] = useState(token)
   const [copied, setCopied] = useState(false)
   const [pendingImport, setPendingImport] = useState<ReturnType<typeof decodeShareFragment>>(null)
@@ -186,9 +266,15 @@ export function SettingsPage() {
   const viewerRepos = useViewerRepos(token)
   const navigate = useNavigate()
 
+  const active = accounts.find((a) => a.id === activeId) ?? accounts[0]
+  const activeName = profileName(active)
+
   const repoOptions = viewerRepos.repos
     .filter((r) => !r.isArchived)
     .map((r) => r.nameWithOwner)
+
+  // Every field below edits the active account — follow a switch, don't keep the old draft.
+  useEffect(() => { setTokenDraft(token) }, [activeId, token])
 
   useEffect(() => {
     const stashed = sessionStorage.getItem('devpulse:pending-import')
@@ -216,15 +302,15 @@ export function SettingsPage() {
     <div className="settings">
       <div className="page-head">
         <h2>Settings</h2>
-        <p>Your token and watchlist live in this browser only.</p>
+        <p>Your tokens and watchlists live in this browser only.</p>
       </div>
 
       {pendingImport && (
         <div className="import-banner">
           <p>
             This link contains a shared watchlist: <strong>{pendingImport.repos.length}</strong> repos,{' '}
-            <strong>{pendingImport.users.length}</strong> people. Import it? This replaces your current watchlist
-            (your token is not affected).
+            <strong>{pendingImport.users.length}</strong> people. Import it into <strong>{activeName}</strong>{' '}
+            (replacing that account's watchlist), or keep it separate as a new account. No token is affected.
           </p>
           <button
             onClick={() => {
@@ -233,13 +319,24 @@ export function SettingsPage() {
               navigate('/')
             }}
           >
-            Import
+            Import into {activeName}
+          </button>
+          <button
+            className="secondary"
+            onClick={() => {
+              addAccount(pendingImport)
+              clearPendingImport()
+            }}
+          >
+            Import as new account
           </button>
           <button className="secondary" onClick={clearPendingImport}>Dismiss</button>
         </div>
       )}
 
-      <Cell title="GitHub token">
+      <AccountsCell />
+
+      <Cell title="GitHub token" note={`Applies to ${activeName} — each account has its own`}>
         <p className="field-hint">
           Fine-grained personal access token, stored only in this browser and sent only to api.github.com.
         </p>

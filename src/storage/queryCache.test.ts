@@ -5,21 +5,24 @@ function query(queryKey: unknown[], data: unknown = { prs: [] }): PersistableQue
   return { queryKey, state: { data } }
 }
 
+// Keys carry accountKey(token) at index 1 — a fingerprint, never token material.
+const ACCOUNT = '1jq4x7'
+
 describe('shouldPersistQuery', () => {
   it('persists the PR queries that gate first paint', () => {
-    expect(shouldPersistQuery(query(['openPrs', ['a/b'], []]))).toBe(true)
-    expect(shouldPersistQuery(query(['mergedPrs', ['a/b'], [], '2026-07-01']))).toBe(true)
+    expect(shouldPersistQuery(query(['openPrs', ACCOUNT, ['a/b'], []]))).toBe(true)
+    expect(shouldPersistQuery(query(['mergedPrs', ACCOUNT, ['a/b'], [], '2026-07-01']))).toBe(true)
   })
 
-  // These are keyed on token.slice(-8); a persisted cache blob must never carry
-  // any part of the PAT, since it can end up in an export or a bug report.
-  it('never persists token-derived query keys', () => {
-    expect(shouldPersistQuery(query(['viewer', 'ecret123']))).toBe(false)
-    expect(shouldPersistQuery(query(['viewerRepos', 'ecret123']))).toBe(false)
+  // Identity and the repo roster are cheap to refetch and have no first-paint
+  // value, so they stay out of a blob that can end up in a bug report.
+  it('keeps identity and repo-list queries off disk', () => {
+    expect(shouldPersistQuery(query(['viewer', ACCOUNT]))).toBe(false)
+    expect(shouldPersistQuery(query(['viewerRepos', ACCOUNT]))).toBe(false)
   })
 
   it('does not persist queries added later without review', () => {
-    expect(shouldPersistQuery(query(['someNewQuery']))).toBe(false)
+    expect(shouldPersistQuery(query(['someNewQuery', ACCOUNT]))).toBe(false)
   })
 
   it('does not persist a query that has never resolved', () => {

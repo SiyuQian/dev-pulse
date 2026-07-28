@@ -11,6 +11,7 @@ A team PR activity dashboard. See your team's pull requests at a glance — what
 - **Stats & trends** — merge frequency, PR cycle time, and throughput over time
 - **Stale PR alerts** — surfacing PRs that have sat untouched too long
 - **Watchlists** — manage the repos and users you care about; share your config with teammates via a link (your token is never included)
+- **Multiple accounts** — keep a token and watchlist per GitHub account (work, personal, another org) and switch between them from the top bar
 
 ## Getting started
 
@@ -20,6 +21,7 @@ A team PR activity dashboard. See your team's pull requests at a glance — what
 2. Paste a GitHub **fine-grained personal access token** with read access to the repos you want to watch (Settings → Developer settings → Fine-grained tokens). The token is stored only in your browser's localStorage and sent only to `api.github.com`.
 3. Add repos (`owner/name`) and/or GitHub usernames to your watchlist
 4. Optionally, click **Share config** to send your watchlist to a teammate as a URL
+5. Watching a second GitHub account? **Settings → Accounts → Add account** gives it its own token and watchlist; the top-bar switcher swaps between them
 
 ### Develop
 
@@ -42,3 +44,4 @@ React · Vite · TypeScript · TanStack Query · GitHub GraphQL API
 - Your PAT never leaves your browser except in requests to `api.github.com`
 - Shared config links contain only the watchlist, never tokens
 - Prefer fine-grained tokens scoped to read-only access on the repos you watch
+- Each account's token is stored separately from its watchlist, so nothing that serialises a watchlist can carry a token

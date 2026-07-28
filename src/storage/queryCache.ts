@@ -4,22 +4,31 @@ import { removeOldestQuery, type Persister } from '@tanstack/react-query-persist
 const QUERY_CACHE_KEY = 'devpulse:query-cache:v1'
 
 /**
- * Bump when the shape of any persisted query's data changes. Restore is
+ * Bump when the shape of a persisted query's data *or key* changes. Restore is
  * all-or-nothing, so a cache written by an older shape must be discarded rather
- * than hydrated into components that no longer understand it — same reasoning as
- * the `version` field on WatchConfig.
+ * than hydrated — same reasoning as the `version` field on the profile store.
+ *
+ * v2: query keys gained the account fingerprint at index 1, so v1 entries can
+ * never match a key the hooks ask for. The storage key itself stays at v1 on
+ * purpose — a buster mismatch calls removeClient(), whereas renaming the key
+ * would orphan the old blob with nothing left to clean it up.
  */
-const QUERY_CACHE_BUSTER = 'v1'
+const QUERY_CACHE_BUSTER = 'v2'
 
 /** Yesterday's board is worth painting for a second; last week's is just misleading. */
 const QUERY_CACHE_MAX_AGE = 24 * 60 * 60 * 1000
 
 /**
- * An allowlist, deliberately, not a denylist. `viewer` and `viewerRepos` are
- * keyed on `token.slice(-8)` (src/api/queries.ts), and a persisted cache blob is
- * exactly the kind of thing that ends up pasted into a bug report — which the
- * "PAT never appears in exports or error reports" invariant forbids. Anything
- * added later stays unpersisted until someone has checked it by hand.
+ * An allowlist, deliberately, not a denylist: only the two queries that gate
+ * first paint go to disk. A persisted cache blob is exactly the kind of thing
+ * that ends up pasted into a bug report, so anything added later stays off disk
+ * until someone has checked what it carries — the conservative default the
+ * "PAT never appears in exports or error reports" invariant asks for.
+ *
+ * Query keys are safe on their own account: they hold `accountKey(token)`, a
+ * non-reversible FNV-1a fingerprint (src/api/queries.ts), not token material.
+ * It also scopes every entry per account, so two accounts watching the same
+ * repos restore their own board rather than each other's.
  */
 const PERSISTED_QUERIES = new Set(['openPrs', 'mergedPrs'])
 
