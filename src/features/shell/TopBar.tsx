@@ -1,4 +1,5 @@
-import { useOpenPrs } from '../../api/queries'
+import { useLocation } from 'react-router-dom'
+import { useMyOpenPrs, useOpenPrs } from '../../api/queries'
 import { useAppState } from '../../state/AppState'
 import { AccountSwitcher } from './AccountSwitcher'
 import { scopeSummary } from '../shared/format'
@@ -10,7 +11,13 @@ import { scopeSummary } from '../shared/format'
  */
 export function TopBar() {
   const { token, config } = useAppState()
-  const { data, isFetching, refetch, dataUpdatedAt, error } = useOpenPrs(token, config)
+  // Mine reads a different, unscoped query. Freshness and Refresh have to follow
+  // whatever the page below is actually showing, or the bar reports on data the
+  // reader can't see — and Refresh would leave the visible rows untouched.
+  const onMine = useLocation().pathname === '/mine'
+  const board = useOpenPrs(token, config)
+  const mine = useMyOpenPrs(token, onMine)
+  const { data, isFetching, refetch, dataUpdatedAt, error } = onMine ? mine : board
 
   // Pages keep rendering cached rows when a refetch fails, so the freshness
   // indicator is the one place that has to admit the data is no longer live.
@@ -20,7 +27,7 @@ export function TopBar() {
   const updatedLabel = updatedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
   const rate = data?.rateLimit
   const quotaRatio = rate && rate.limit > 0 ? rate.remaining / rate.limit : null
-  const scope = scopeSummary(config.repos, config.users)
+  const scope = onMine ? 'everything you authored' : scopeSummary(config.repos, config.users)
 
   return (
     <header className="top">

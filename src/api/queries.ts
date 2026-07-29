@@ -2,6 +2,8 @@ import { useInfiniteQuery, useQuery, type QueryClient } from '@tanstack/react-qu
 import { useEffect, useMemo } from 'react'
 import {
   fetchMergedPrs,
+  fetchMyMergedPrs,
+  fetchMyOpenPrs,
   fetchOpenPrs,
   fetchOrgMemberPage,
   fetchViewerLogin,
@@ -55,6 +57,40 @@ export function useMergedPrs(token: string, config: WatchConfig, sinceIso: strin
     queryKey: ['mergedPrs', accountKey(token), config.repos, config.users, sinceIso.slice(0, 10)],
     queryFn: () => fetchMergedPrs(token, config.repos, config.users, sinceIso),
     enabled: Boolean(token) && (config.repos.length > 0 || config.users.length > 0),
+    staleTime: 10 * 60 * 1000,
+    retry: (failureCount, error) =>
+      failureCount < 2 && !(error instanceof GitHubError && error.status === 401),
+  })
+}
+
+/**
+ * Your own open PRs, everywhere. The key carries no watchlist fingerprint —
+ * unlike every other PR query here — because the underlying search ignores the
+ * watchlist; folding `config` in would only throw the cache away on edits that
+ * cannot change the result.
+ *
+ * `enabled` is a parameter rather than always-on because the top bar reads this
+ * query for its freshness and quota readout, and must not trigger the fetch on
+ * the pages that don't show it.
+ */
+export function useMyOpenPrs(token: string, enabled = true) {
+  return useQuery({
+    queryKey: ['myOpenPrs', accountKey(token)],
+    queryFn: () => fetchMyOpenPrs(token),
+    enabled: Boolean(token) && enabled,
+    refetchInterval: 2 * 60 * 1000,
+    staleTime: 60 * 1000,
+    retry: (failureCount, error) =>
+      failureCount < 2 && !(error instanceof GitHubError && error.status === 401),
+  })
+}
+
+/** Your own merged PRs since `sinceIso`. Unscoped, for the Mine view's toggle. */
+export function useMyMergedPrs(token: string, sinceIso: string, enabled = true) {
+  return useQuery({
+    queryKey: ['myMergedPrs', accountKey(token), sinceIso.slice(0, 10)],
+    queryFn: () => fetchMyMergedPrs(token, sinceIso),
+    enabled: Boolean(token) && enabled,
     staleTime: 10 * 60 * 1000,
     retry: (failureCount, error) =>
       failureCount < 2 && !(error instanceof GitHubError && error.status === 401),

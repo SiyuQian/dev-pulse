@@ -11,8 +11,13 @@ import { TopBar } from './features/shell/TopBar'
 import { BoardPage } from './features/board/BoardPage'
 import { ReviewsPage } from './features/reviews/ReviewsPage'
 
-// Board and Reviews are the triage path and load eagerly; the rest are visited
-// rarely enough that their code shouldn't sit in the first-paint bundle.
+// Board and Reviews are the landing view and its immediate neighbour, so they
+// load eagerly; everything else is a deliberate navigation away from first
+// paint and shouldn't sit in that bundle. Mine is frequently visited but never
+// first, so it splits too — its query is the slow part, not its code.
+const MinePage = lazy(() =>
+  import('./features/mine/MinePage').then((m) => ({ default: m.MinePage })),
+)
 const PeoplePage = lazy(() =>
   import('./features/people/PeoplePage').then((m) => ({ default: m.PeoplePage })),
 )
@@ -24,18 +29,23 @@ const SettingsPage = lazy(() =>
 )
 
 function Shell() {
-  // Settings is configuration, not triage — the attention strip would only be noise there.
-  const onSettings = useLocation().pathname === '/settings'
+  const path = useLocation().pathname
+  // Settings is configuration, not triage — the attention strip would only be
+  // noise there. Mine hides it for a different reason: the strip is derived from
+  // the watchlist, and sitting it directly above a banner that says "this view
+  // ignores the watchlist" is a contradiction the reader has to untangle.
+  const bare = path === '/settings' || path === '/mine'
   return (
     <div className="shell">
       <Rail />
       <div className="work">
         <TopBar />
-        {!onSettings && <AttentionStrip />}
+        {!bare && <AttentionStrip />}
         <main className="work-main">
           <Suspense fallback={<Empty>Loading…</Empty>}>
             <Routes>
               <Route path="/" element={<BoardPage />} />
+              <Route path="/mine" element={<MinePage />} />
               <Route path="/reviews" element={<ReviewsPage />} />
               <Route path="/people" element={<PeoplePage />} />
               <Route path="/stats" element={<StatsPage />} />

@@ -119,7 +119,7 @@ export function Tag({
   kind,
   children,
 }: {
-  kind: 'you' | 'idle' | 'ci' | 'ready'
+  kind: 'you' | 'idle' | 'ci' | 'ready' | 'offscope'
   children: ReactNode
 }) {
   return <span className={`tag ${kind}`}>{children}</span>

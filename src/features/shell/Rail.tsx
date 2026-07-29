@@ -37,6 +37,16 @@ const NAV = [
     ),
   },
   {
+    to: '/mine',
+    label: 'Mine',
+    icon: (
+      <Icon>
+        <circle cx="8" cy="5.2" r="2.6" />
+        <path d="M2.8 13.6c0-2.7 2.3-4.5 5.2-4.5s5.2 1.8 5.2 4.5" />
+      </Icon>
+    ),
+  },
+  {
     to: '/reviews',
     label: 'Reviews',
     icon: (
