@@ -183,6 +183,27 @@ export async function fetchOpenPrs(
   return { prs, rateLimit: { remaining: last.remaining, limit: last.limit, resetAt: last.resetAt } }
 }
 
+/** GitHub's search API caps `first` at 100, and one page is a whole person's queue. */
+const MY_PRS_PAGE_SIZE = 100
+
+/**
+ * Every PR you have open, anywhere — deliberately not scoped to the watchlist.
+ *
+ * `author:@me` resolves server-side to the token's own account, so this needs no
+ * viewer lookup and stays correct the moment the active profile changes. It is
+ * the only PR fetch in the app that ignores `config`, which is why the Mine view
+ * states its scope on screen: its counts will not match the board's.
+ */
+export async function fetchMyOpenPrs(token: string): Promise<OpenPrsResult> {
+  const result = await graphql<SearchResult>(token, SEARCH_PRS_QUERY, {
+    q: 'is:pr is:open author:@me',
+    first: MY_PRS_PAGE_SIZE,
+  })
+  const prs = result.search.nodes.filter((node) => node.id).map(toPullRequest)
+  prs.sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1))
+  return { prs, rateLimit: result.rateLimit }
+}
+
 interface MergedPrNode {
   id: string
   number: number
@@ -236,6 +257,37 @@ export interface MergedPr {
   cycleTimeHours: number
 }
 
+function toMergedPr(node: MergedPrNode): MergedPr {
+  return {
+    id: node.id,
+    number: node.number,
+    title: node.title,
+    url: node.url,
+    repo: node.repository.nameWithOwner,
+    author: node.author?.login ?? 'ghost',
+    createdAt: node.createdAt,
+    mergedAt: node.mergedAt,
+    additions: node.additions,
+    deletions: node.deletions,
+    cycleTimeHours:
+      (new Date(node.mergedAt).getTime() - new Date(node.createdAt).getTime()) / 3_600_000,
+  }
+}
+
+/**
+ * Your own recently-merged PRs, unscoped, to sit behind the Mine view's
+ * "Merged" toggle. Same `author:@me` reasoning as fetchMyOpenPrs.
+ */
+export async function fetchMyMergedPrs(token: string, sinceIso: string): Promise<MergedPr[]> {
+  const data = await graphql<{ search: { nodes: MergedPrNode[] } }>(token, SEARCH_MERGED_QUERY, {
+    q: `is:pr is:merged author:@me merged:>=${sinceIso.slice(0, 10)}`,
+    first: MY_PRS_PAGE_SIZE,
+  })
+  const prs = data.search.nodes.filter((node) => node.id).map(toMergedPr)
+  prs.sort((a, b) => (a.mergedAt < b.mergedAt ? 1 : -1))
+  return prs
+}
+
 export async function fetchMergedPrs(
   token: string,
   repos: string[],
@@ -261,20 +313,7 @@ export async function fetchMergedPrs(
     for (const node of result.search.nodes) {
       if (!node.id || seen.has(node.id)) continue
       seen.add(node.id)
-      prs.push({
-        id: node.id,
-        number: node.number,
-        title: node.title,
-        url: node.url,
-        repo: node.repository.nameWithOwner,
-        author: node.author?.login ?? 'ghost',
-        createdAt: node.createdAt,
-        mergedAt: node.mergedAt,
-        additions: node.additions,
-        deletions: node.deletions,
-        cycleTimeHours:
-          (new Date(node.mergedAt).getTime() - new Date(node.createdAt).getTime()) / 3_600_000,
-      })
+      prs.push(toMergedPr(node))
     }
   }
   prs.sort((a, b) => (a.mergedAt < b.mergedAt ? 1 : -1))

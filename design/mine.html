@@ -1,0 +1,578 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>dev-pulse — /mine design mockup</title>
+
+    <!--
+      Static mockup for the proposed "My pull requests" view.
+      It links the REAL stylesheet so nothing here is invented styling — every
+      class below already exists in the app, except the handful marked
+      MOCKUP-ONLY in the <style> block, which are the genuinely new bits the
+      design would need to add.
+
+      Not wired to anything. Data is fabricated. Open it directly in a browser.
+    -->
+    <link rel="stylesheet" href="../src/index.css" />
+
+    <style>
+      /* ── MOCKUP-ONLY: annotation chrome, not part of the design ───────── */
+      .mk-note {
+        border-left: 2px solid var(--signal);
+        background: var(--panel);
+        margin: 0 18px 14px;
+        padding: 10px 14px;
+        font: 11.5px/1.55 var(--mono);
+        color: var(--ink-2);
+      }
+      .mk-note b {
+        color: var(--signal);
+        font-weight: 600;
+      }
+      .mk-note code {
+        color: var(--ink);
+        background: var(--panel-2);
+        padding: 1px 5px;
+        border-radius: 3px;
+      }
+      .mk-divider {
+        margin: 40px 18px 0;
+        border-top: 1px dashed var(--line-hi);
+        padding-top: 18px;
+        font: 600 10.5px/1 var(--mono);
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        color: var(--ink-3);
+      }
+
+      /* ── NEW in this design (would move into src/index.css) ───────────── */
+
+      /* Scope banner. Every other view is watchlist-scoped; this one is not,
+         and that difference has to be stated or the numbers look wrong. */
+      .scope-bar {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin: 0 18px;
+        padding: 8px 12px;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        background: var(--panel);
+        font: 11px/1 var(--mono);
+        color: var(--ink-3);
+      }
+      .scope-bar .q {
+        color: var(--ink);
+        background: var(--panel-2);
+        border: 1px solid var(--line-hi);
+        border-radius: 3px;
+        padding: 3px 7px;
+      }
+      .scope-bar .spacer {
+        flex: 1;
+      }
+
+      /* "not in your watchlist" marker — the payoff of going unscoped is
+         seeing these at all, so they get a mark rather than being hidden. */
+      .tag.offscope {
+        color: var(--ink-3);
+        border-color: var(--line-hi);
+        background: transparent;
+      }
+
+      /* Replaces the Author column: on /mine the author is always you, so the
+         useful column is who the PR is stuck behind. */
+      .waiting {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        white-space: nowrap;
+        font: 11px/1 var(--mono);
+        color: var(--ink-2);
+      }
+      .waiting.nobody {
+        color: var(--warn);
+      }
+      .waiting.self {
+        color: var(--signal);
+      }
+    </style>
+  </head>
+
+  <body>
+    <div class="shell">
+      <!-- ── Rail: one new entry, "Mine", sitting under Pipeline ────────── -->
+      <div class="rail">
+        <h1 class="rail-brand">
+          <span class="mark" aria-hidden="true"></span>
+          <span class="rail-word"><b>dev</b>·pulse</span>
+        </h1>
+        <nav class="rail-nav" aria-label="Views">
+          <a href="#" title="Pipeline">
+            <svg
+              viewBox="0 0 16 16"
+              aria-hidden="true"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.6"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <rect x="1.8" y="2.5" width="3.2" height="11" rx="1" />
+              <rect x="6.4" y="2.5" width="3.2" height="7.5" rx="1" />
+              <rect x="11" y="2.5" width="3.2" height="9.5" rx="1" />
+            </svg>
+            <span class="rail-label">Pipeline</span>
+          </a>
+
+          <!-- NEW -->
+          <a href="#" title="Mine" class="active">
+            <svg
+              viewBox="0 0 16 16"
+              aria-hidden="true"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.6"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <circle cx="8" cy="5.2" r="2.6" />
+              <path d="M2.8 13.6c0-2.7 2.3-4.5 5.2-4.5s5.2 1.8 5.2 4.5" />
+            </svg>
+            <span class="rail-label">Mine</span>
+          </a>
+
+          <a href="#" title="Reviews">
+            <svg
+              viewBox="0 0 16 16"
+              aria-hidden="true"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.6"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <path d="M1.4 8s2.4-4.4 6.6-4.4S14.6 8 14.6 8s-2.4 4.4-6.6 4.4S1.4 8 1.4 8Z" />
+              <circle cx="8" cy="8" r="1.9" />
+            </svg>
+            <span class="rail-label">Reviews</span>
+          </a>
+          <a href="#" title="People">
+            <svg
+              viewBox="0 0 16 16"
+              aria-hidden="true"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.6"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <circle cx="6" cy="5.4" r="2.5" />
+              <path d="M1.6 13.8c0-2.4 2-4 4.4-4s4.4 1.6 4.4 4" />
+              <path d="M11.1 3.3a2.5 2.5 0 0 1 0 4.6M12.3 9.9c1.4.5 2.3 1.9 2.3 3.9" />
+            </svg>
+            <span class="rail-label">People</span>
+          </a>
+          <a href="#" title="Trends">
+            <svg
+              viewBox="0 0 16 16"
+              aria-hidden="true"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.6"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <path d="M1.6 12.4l4-4.6 3 2.5 5.8-6.6" />
+              <path d="M10.9 3.4h3.5v3.4" />
+            </svg>
+            <span class="rail-label">Trends</span>
+          </a>
+          <a href="#" title="Settings" class="rail-settings">
+            <svg
+              viewBox="0 0 16 16"
+              aria-hidden="true"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.6"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <path d="M2.5 4.6h11M2.5 11.4h11" />
+              <circle cx="5.8" cy="4.6" r="1.9" fill="var(--panel)" />
+              <circle cx="10.2" cy="11.4" r="1.9" fill="var(--panel)" />
+            </svg>
+            <span class="rail-label">Settings</span>
+          </a>
+        </nav>
+      </div>
+
+      <div class="work">
+        <!-- ── Top bar: unchanged, except the crumb ──────────────────────── -->
+        <header class="top">
+          <div class="acct">
+            <div class="acct-control">
+              <span class="avatar" style="background: #6f7cf0">SQ</span>
+              <span class="acct-label">work</span>
+              <span class="acct-count">2</span>
+              <span class="acct-caret">▾</span>
+            </div>
+          </div>
+          <span class="crumbs">everything you authored</span>
+          <span class="top-spacer"></span>
+          <span class="freshness"><i class="pulse"></i>updated 09:41</span>
+          <span class="quota">
+            4,812/5,000
+            <span class="bar"><i style="width: 96%; background: var(--blue)"></i></span>
+          </span>
+          <button class="secondary">Refresh</button>
+        </header>
+
+        <div class="mk-note">
+          <b>Crumb changes.</b> Every other view shows the watchlist scope (<code
+            >3 repos · 5 people</code
+          >). This one must not — it would be a lie. It reads
+          <code>everything you authored</code> instead.
+        </div>
+
+        <main class="work-main">
+          <!-- ── Scope banner ────────────────────────────────────────────── -->
+          <div class="scope-bar">
+            <span>scope</span>
+            <span class="q">is:pr is:open author:@me</span>
+            <span>· ignores the watchlist · 1 request</span>
+            <span class="spacer"></span>
+            <span>2 of 7 outside your watched repos</span>
+          </div>
+
+          <div class="mk-note">
+            <b>Why this bar exists.</b> It is the only place in the app where a view deliberately
+            disagrees with Settings. Without it, "7 open" here versus "5 open" on Pipeline reads as
+            a bug. It also shows the literal search string, which makes the view self-explaining and
+            debuggable.
+          </div>
+
+          <div class="sec-head">
+            <h2>My pull requests</h2>
+            <span class="sub">7 open · 3 blocked on someone else · median idle 2.1d</span>
+            <div class="sec-actions">
+              <input class="search" placeholder="Filter…  /" aria-label="Filter pull requests" />
+              <div class="seg" role="group" aria-label="State">
+                <button type="button" aria-pressed="true">Open</button>
+                <button type="button" aria-pressed="false">Merged 30d</button>
+              </div>
+              <div class="seg" role="group" aria-label="Blocked on">
+                <button type="button" aria-pressed="true">All</button>
+                <button type="button" aria-pressed="false">On them</button>
+                <button type="button" aria-pressed="false">On me</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="mk-note">
+            <b>Two segmented controls, not four filters.</b> <code>Open / Merged 30d</code> is the
+            state axis. <code>All / On them / On me</code> is the only question you actually ask of
+            your own PRs — "am I waiting, or are they?" — derived from stage:
+            <em>changes requested</em> and <em>draft</em> are on you; <em>needs review</em> and
+            <em>approved</em> are on them. It intentionally does <em>not</em> mirror the Pipeline
+            filters, which exist to triage other people's work.
+          </div>
+
+          <!-- ── The table ───────────────────────────────────────────────── -->
+          <table class="prs">
+            <thead>
+              <tr>
+                <th class="col-title">Pull request</th>
+                <th>Waiting on</th>
+                <th>CI</th>
+                <th>Diff</th>
+                <th class="col-idle">Idle</th>
+              </tr>
+            </thead>
+
+            <!-- Changes requested -->
+            <tbody>
+              <tr class="group">
+                <th colspan="5" scope="colgroup">
+                  <span class="swatch" style="background: var(--stage-changes)"></span>
+                  Changes requested
+                  <span class="c">2</span>
+                  <span class="c">median idle 4.8d</span>
+                </th>
+              </tr>
+
+              <tr class="is-mine is-cursor">
+                <td class="col-title">
+                  <a href="#" class="title">Split the rate-limit probe out of the GraphQL client</a>
+                  <span class="slug">
+                    dev-pulse #214 · opened 9d ago
+                    <span class="tag ci">ci red</span>
+                  </span>
+                </td>
+                <td>
+                  <span class="waiting self">
+                    <span class="avatar" style="background: #6f7cf0">SQ</span>
+                    you — 2 comments unaddressed
+                  </span>
+                </td>
+                <td>
+                  <span class="ci bad"><i class="dot"></i>fail</span>
+                </td>
+                <td>
+                  <span class="diff"
+                    ><span class="add">+318</span> <span class="del">−96</span></span
+                  >
+                </td>
+                <td class="col-idle">
+                  <span class="age crit"
+                    ><span class="age-track"><i style="width: 100%"></i></span><b>6.4d</b></span
+                  >
+                </td>
+              </tr>
+
+              <tr class="is-mine">
+                <td class="col-title">
+                  <a href="#" class="title">Migrate config storage to v3 schema</a>
+                  <span class="slug">
+                    platform-web #1902 · opened 12d ago
+                    <span class="tag offscope">not watched</span>
+                  </span>
+                </td>
+                <td>
+                  <span class="waiting self">
+                    <span class="avatar" style="background: #6f7cf0">SQ</span>
+                    you — 1 comment unaddressed
+                  </span>
+                </td>
+                <td>
+                  <span class="ci ok"><i class="dot"></i>pass</span>
+                </td>
+                <td>
+                  <span class="diff"
+                    ><span class="add">+742</span> <span class="del">−410</span></span
+                  >
+                </td>
+                <td class="col-idle">
+                  <span class="age crit"
+                    ><span class="age-track"><i style="width: 100%"></i></span><b>3.2d</b></span
+                  >
+                </td>
+              </tr>
+            </tbody>
+
+            <!-- Needs review -->
+            <tbody>
+              <tr class="group">
+                <th colspan="5" scope="colgroup">
+                  <span class="swatch" style="background: var(--stage-review)"></span>
+                  Needs review
+                  <span class="c">3</span>
+                  <span class="c">median idle 1.8d</span>
+                </th>
+              </tr>
+
+              <tr class="is-mine">
+                <td class="col-title">
+                  <a href="#" class="title">Persist the query cache across reloads</a>
+                  <span class="slug">dev-pulse #221 · opened 4d ago</span>
+                </td>
+                <td>
+                  <span class="waiting">
+                    <span class="avatar-row">
+                      <span class="avatar" style="background: #d98a4a">RT</span>
+                      <span class="avatar" style="background: #4ab8a1">MK</span>
+                    </span>
+                    rtorres, mkeane
+                  </span>
+                </td>
+                <td>
+                  <span class="ci ok"><i class="dot"></i>pass</span>
+                </td>
+                <td>
+                  <span class="diff"
+                    ><span class="add">+204</span> <span class="del">−31</span></span
+                  >
+                </td>
+                <td class="col-idle">
+                  <span class="age hot"
+                    ><span class="age-track"><i style="width: 62%"></i></span><b>2.1d</b></span
+                  >
+                </td>
+              </tr>
+
+              <tr class="is-mine">
+                <td class="col-title">
+                  <a href="#" class="title">Add oxlint to CI and fix the correctness findings</a>
+                  <span class="slug">
+                    infra-tools #77 · opened 6d ago
+                    <span class="tag offscope">not watched</span>
+                    <span class="tag idle">no reviewer</span>
+                  </span>
+                </td>
+                <td><span class="waiting nobody">nobody asked yet</span></td>
+                <td>
+                  <span class="ci ok"><i class="dot"></i>pass</span>
+                </td>
+                <td>
+                  <span class="diff"
+                    ><span class="add">+88</span> <span class="del">−12</span></span
+                  >
+                </td>
+                <td class="col-idle">
+                  <span class="age crit"
+                    ><span class="age-track"><i style="width: 100%"></i></span><b>5.7d</b></span
+                  >
+                </td>
+              </tr>
+
+              <tr class="is-mine">
+                <td class="col-title">
+                  <a href="#" class="title">Surface remaining API quota in the top bar</a>
+                  <span class="slug">dev-pulse #224 · opened 1d ago</span>
+                </td>
+                <td>
+                  <span class="waiting">
+                    <span class="avatar-row"
+                      ><span class="avatar" style="background: #d98a4a">RT</span></span
+                    >
+                    rtorres
+                  </span>
+                </td>
+                <td>
+                  <span class="ci warn"><i class="dot"></i>run</span>
+                </td>
+                <td>
+                  <span class="diff"><span class="add">+61</span> <span class="del">−8</span></span>
+                </td>
+                <td class="col-idle">
+                  <span class="age"
+                    ><span class="age-track"><i style="width: 18%"></i></span><b>0.6d</b></span
+                  >
+                </td>
+              </tr>
+            </tbody>
+
+            <!-- Approved -->
+            <tbody>
+              <tr class="group">
+                <th colspan="5" scope="colgroup">
+                  <span class="swatch" style="background: var(--stage-approved)"></span>
+                  Approved — ready to merge
+                  <span class="c">1</span>
+                </th>
+              </tr>
+
+              <tr class="is-mine">
+                <td class="col-title">
+                  <a href="#" class="title">Explain why the settings pickers came back empty</a>
+                  <span class="slug">
+                    dev-pulse #212 · opened 3d ago
+                    <span class="tag ready">merge it</span>
+                  </span>
+                </td>
+                <td>
+                  <span class="waiting self">
+                    <span class="avatar" style="background: #6f7cf0">SQ</span>
+                    you — approved, just merge
+                  </span>
+                </td>
+                <td>
+                  <span class="ci ok"><i class="dot"></i>pass</span>
+                </td>
+                <td>
+                  <span class="diff"
+                    ><span class="add">+140</span> <span class="del">−22</span></span
+                  >
+                </td>
+                <td class="col-idle">
+                  <span class="age"
+                    ><span class="age-track"><i style="width: 24%"></i></span><b>0.8d</b></span
+                  >
+                </td>
+              </tr>
+            </tbody>
+
+            <!-- Draft -->
+            <tbody>
+              <tr class="group">
+                <th colspan="5" scope="colgroup">
+                  <span class="swatch" style="background: var(--stage-draft)"></span>
+                  Draft
+                  <span class="c">1</span>
+                </th>
+              </tr>
+
+              <tr class="is-mine">
+                <td class="col-title">
+                  <a href="#" class="title">WIP: stale-PR digest email</a>
+                  <span class="slug">dev-pulse #226 · opened 2d ago</span>
+                </td>
+                <td>
+                  <span class="waiting self"
+                    ><span class="avatar" style="background: #6f7cf0">SQ</span> you — still a
+                    draft</span
+                  >
+                </td>
+                <td><span class="mono-dim">—</span></td>
+                <td>
+                  <span class="diff"><span class="add">+37</span> <span class="del">−0</span></span>
+                </td>
+                <td class="col-idle">
+                  <span class="age hot"
+                    ><span class="age-track"><i style="width: 70%"></i></span><b>2.4d</b></span
+                  >
+                </td>
+              </tr>
+            </tbody>
+          </table>
+
+          <p class="hint-bar">
+            <kbd>J</kbd> <kbd>K</kbd> move · <kbd>Enter</kbd> open on GitHub · <kbd>/</kbd> filter
+          </p>
+
+          <div class="mk-note" style="margin-top: 18px">
+            <b>What changed vs. the Pipeline table.</b> Three things, all forced by "every row has
+            the same author": <br />1. <em>Author</em> column → <em>Waiting on</em>. The author
+            column would be seven identical avatars. "Waiting on" is the column you came for.
+            <br />2. Every row carries the lime <code>is-mine</code> edge. On Pipeline that marker
+            distinguishes your rows from others'; here it is uniform, so it works as a page-level
+            identity band rather than a signal — worth deciding whether to keep it or drop it, since
+            a signal that is always on is not a signal.
+            <em>Recommendation: drop it, and reserve the lime edge for the "on you" rows.</em>
+            <br />3. The <code>not watched</code> tag. This is the whole reason for going unscoped,
+            so it should be visible, not silent.
+          </div>
+
+          <!-- ── Rejected alternative ──────────────────────────────────── -->
+          <div class="mk-divider">Alternative considered — split the Pipeline filter</div>
+
+          <div class="sec-head">
+            <h2>Pipeline</h2>
+            <span class="sub">23 open · median idle 1.4d · 6 past 3d</span>
+            <div class="sec-actions">
+              <input class="search" placeholder="Filter…  /" aria-label="Filter pull requests" />
+              <div class="seg" role="group" aria-label="Filter">
+                <button type="button" aria-pressed="true">All</button>
+                <button type="button" aria-pressed="false">Authored</button>
+                <button type="button" aria-pressed="false">To review</button>
+                <button type="button" aria-pressed="false">Idle</button>
+                <button type="button" aria-pressed="false">CI red</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="mk-note">
+            <b>Cheaper, and worse.</b> Splitting today's <code>Mine</code> into
+            <code>Authored</code> / <code>To review</code> is a two-line change to
+            <code>BoardPage.tsx:111</code> and fixes the conflation. But it stays watchlist-scoped,
+            so a PR you opened on an unwatched repo is still invisible — which is the actual
+            complaint. Five segments also crowd the header at 1100px. <br /><br />
+            <b>Worth doing anyway</b>, independently: the current <code>Mine</code> label is wrong
+            regardless of whether <code>/mine</code> ships.
+          </div>
+        </main>
+      </div>
+    </div>
+  </body>
+</html>

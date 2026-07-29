@@ -1,5 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { fetchOrgMemberPage, type OrgMemberCursor } from './github'
+import {
+  fetchMyMergedPrs,
+  fetchMyOpenPrs,
+  fetchOrgMemberPage,
+  type OrgMemberCursor,
+} from './github'
 
 interface GraphQLCall {
   query: string
@@ -39,6 +44,101 @@ const membersResponse = (
 
 afterEach(() => {
   vi.unstubAllGlobals()
+})
+
+const searchPrNode = (overrides: Record<string, unknown> = {}) => ({
+  id: 'pr1',
+  number: 7,
+  title: 'Add the thing',
+  url: 'https://github.com/acme/app/pull/7',
+  isDraft: false,
+  createdAt: '2026-07-01T00:00:00Z',
+  updatedAt: '2026-07-02T00:00:00Z',
+  additions: 10,
+  deletions: 2,
+  reviewDecision: 'REVIEW_REQUIRED',
+  author: { login: 'ada' },
+  repository: { nameWithOwner: 'acme/app' },
+  reviewRequests: { nodes: [] },
+  commits: { nodes: [{ commit: { statusCheckRollup: { state: 'SUCCESS' } } }] },
+  ...overrides,
+})
+
+const rateLimit = { remaining: 4900, limit: 5000, resetAt: '2026-07-29T10:00:00Z' }
+
+describe('fetchMyOpenPrs', () => {
+  it('searches author:@me in one request, with no watchlist qualifiers', async () => {
+    const calls = mockGraphQL([{ search: { issueCount: 1, nodes: [searchPrNode()] }, rateLimit }])
+
+    const result = await fetchMyOpenPrs('tok')
+
+    expect(calls).toHaveLength(1)
+    expect(calls[0].variables.q).toBe('is:pr is:open author:@me')
+    expect(result.prs).toHaveLength(1)
+    expect(result.prs[0]).toMatchObject({ repo: 'acme/app', author: 'ada', number: 7 })
+    expect(result.rateLimit).toEqual(rateLimit)
+  })
+
+  it('sorts most-recently-updated first', async () => {
+    mockGraphQL([
+      {
+        search: {
+          issueCount: 2,
+          nodes: [
+            searchPrNode({ id: 'old', updatedAt: '2026-07-01T00:00:00Z' }),
+            searchPrNode({ id: 'new', updatedAt: '2026-07-20T00:00:00Z' }),
+          ],
+        },
+        rateLimit,
+      },
+    ])
+
+    const result = await fetchMyOpenPrs('tok')
+
+    expect(result.prs.map((p) => p.id)).toEqual(['new', 'old'])
+  })
+
+  /**
+   * `search` returns `type: ISSUE` results, and anything that isn't a PullRequest
+   * comes back as an empty node rather than being filtered server-side.
+   */
+  it('drops nodes that are not pull requests', async () => {
+    mockGraphQL([{ search: { issueCount: 2, nodes: [{}, searchPrNode()] }, rateLimit }])
+
+    const result = await fetchMyOpenPrs('tok')
+
+    expect(result.prs).toHaveLength(1)
+  })
+})
+
+describe('fetchMyMergedPrs', () => {
+  it('scopes the search to author:@me and the given date, and derives cycle time', async () => {
+    const calls = mockGraphQL([
+      {
+        search: {
+          nodes: [
+            {
+              id: 'pr1',
+              number: 7,
+              title: 'Add the thing',
+              url: 'https://github.com/acme/app/pull/7',
+              createdAt: '2026-07-01T00:00:00Z',
+              mergedAt: '2026-07-02T12:00:00Z',
+              additions: 10,
+              deletions: 2,
+              author: { login: 'ada' },
+              repository: { nameWithOwner: 'acme/app' },
+            },
+          ],
+        },
+      },
+    ])
+
+    const prs = await fetchMyMergedPrs('tok', '2026-06-29T08:30:00Z')
+
+    expect(calls[0].variables.q).toBe('is:pr is:merged author:@me merged:>=2026-06-29')
+    expect(prs[0].cycleTimeHours).toBe(36)
+  })
 })
 
 describe('fetchOrgMemberPage', () => {
