@@ -101,14 +101,6 @@ export function Rail() {
         {NAV.map((item) => (
           <NavItem key={item.to} {...item} />
         ))}
-        <NavLink to="/settings" title="Settings" className="rail-settings">
-          <Icon>
-            <path d="M2.5 4.6h11M2.5 11.4h11" />
-            <circle cx="5.8" cy="4.6" r="1.9" fill="var(--panel)" />
-            <circle cx="10.2" cy="11.4" r="1.9" fill="var(--panel)" />
-          </Icon>
-          <span className="rail-label">Settings</span>
-        </NavLink>
       </nav>
     </div>
   )

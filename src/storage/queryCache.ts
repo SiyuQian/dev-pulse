@@ -1,7 +1,7 @@
 import { createAsyncStoragePersister } from '@tanstack/query-async-storage-persister'
 import { removeOldestQuery, type Persister } from '@tanstack/react-query-persist-client'
 
-const QUERY_CACHE_KEY = 'devpulse:query-cache:v1'
+export const QUERY_CACHE_KEY = 'devpulse:query-cache:v1'
 
 /**
  * Bump when the shape of a persisted query's data *or key* changes. Restore is

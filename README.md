@@ -1,51 +1,78 @@
 # dev-pulse
 
-A team PR activity dashboard. See your team's pull requests at a glance — what's open, what's blocked on review, what's gone stale, and how the team is trending.
+A zero-config PR activity dashboard for a small GitHub team. Sign in once to see open pull requests, review queues, stale work, and team trends across every visible, non-archived repository.
 
-**No backend.** dev-pulse is a static web app that talks directly to the GitHub API from your browser. Deploy it once, and every teammate uses it with their own GitHub token.
+## How it works
+
+1. Sign in with GitHub.
+2. dev-pulse verifies that your login is on the server-side allowlist.
+3. It automatically discovers repositories visible to that GitHub account.
+4. The existing dashboard views load without PATs or watchlists.
+
+GitHub credentials are encrypted in an `HttpOnly`, `Secure`, `SameSite=Lax` session cookie. The browser sends fixed read-only GraphQL operations through a same-origin Vercel Function; it never receives or stores the OAuth access token.
 
 ## Features
 
-- **Open PR board** — all open PRs across the repos and people you watch, with review state, CI status, and age
-- **Review activity** — PRs waiting on your review, who's reviewing whom, turnaround times
-- **Stats & trends** — merge frequency, PR cycle time, and throughput over time
-- **Stale PR alerts** — surfacing PRs that have sat untouched too long
-- **Watchlists** — manage the repos and users you care about; share your config with teammates via a link (your token is never included)
-- **Multiple accounts** — keep a token and watchlist per GitHub account (work, personal, another org) and switch between them from the top bar
+- **Automatic scope** — all visible, non-archived repositories, discovered after sign-in
+- **Open PR board** — review state, CI status, age, author, and requested reviewers
+- **Review activity** — PRs waiting on your review and review turnaround
+- **Stats & trends** — merge frequency, PR cycle time, and throughput
+- **Stale PR alerts** — PRs with no activity past the configured threshold
+- **Allowlisted access** — only configured GitHub logins can establish a session
 
-## Getting started
-
-### Use it
-
-1. Open the deployed dashboard
-2. Paste a GitHub **fine-grained personal access token** with read access to the repos you want to watch (Settings → Developer settings → Fine-grained tokens). The token is stored only in your browser's localStorage and sent only to `api.github.com`.
-3. Add repos (`owner/name`) and/or GitHub usernames to your watchlist
-4. Optionally, click **Share config** to send your watchlist to a teammate as a URL
-5. Watching a second GitHub account? **Settings → Accounts → Add account** gives it its own token and watchlist; the top-bar switcher swaps between them
-
-### Develop
+## Develop
 
 ```bash
-npm install
-npm run dev      # http://localhost:5173
-npm run build    # static production build in dist/
-npm run check    # format, lint, typecheck, and tests — the same gates CI runs
+npm ci
+npm run dev      # frontend only; API calls require Vercel dev or a deployed preview
+npm run check    # format, lint, typecheck, and tests
+npm run build    # verified production frontend build in dist/
 ```
 
-Formatting is handled by Prettier (`npm run format`) and linting by [oxlint](https://oxc.rs)
-(`npm run lint`). CI runs both on every pull request.
+To exercise OAuth and API routes locally, provide the environment variables below and run `npx vercel dev`.
 
-### Deploy
+## Deploy to Vercel
 
-The build output in `dist/` is fully static — host it on Vercel, Cloudflare Pages, GitHub Pages, or any static file server. No environment variables or server configuration required.
+### 1. Register a GitHub OAuth App
+
+Create an OAuth App in GitHub Developer settings with:
+
+- **Homepage URL:** `https://dev-pulse.siyu.co.nz`
+- **Authorization callback URL:** `https://dev-pulse.siyu.co.nz/api/auth/callback`
+
+### 2. Configure Vercel environment variables
+
+Set these for Production and Preview as appropriate:
+
+```text
+APP_URL=https://dev-pulse.siyu.co.nz
+GITHUB_CLIENT_ID=<oauth-app-client-id>
+GITHUB_CLIENT_SECRET=<oauth-app-client-secret>
+SESSION_SECRET=<at-least-32-random-characters>
+ALLOWED_GITHUB_USERS=SiyuQian,SiyuAI
+```
+
+Generate `SESSION_SECRET` with a cryptographically secure password generator or:
+
+```bash
+openssl rand -base64 48
+```
+
+Keep only the GitHub logins that should access the dashboard. An empty allowlist fails closed: nobody can sign in.
+
+### 3. Deploy
+
+Vercel builds the Vite frontend and automatically deploys files under `api/` as Functions. No database is required.
+
+## Security invariants
+
+- OAuth access tokens never enter client JavaScript, localStorage, URLs, or logs.
+- Session contents use AES-256-GCM authenticated encryption.
+- Only allowlisted GitHub logins receive a session.
+- The GraphQL proxy requires a valid same-origin session and rejects mutations.
+- Automatic repository scope comes from the signed-in user's own GitHub permissions.
+- No database or shared service-account PAT is used.
 
 ## Tech
 
-React · Vite · TypeScript · TanStack Query · GitHub GraphQL API
-
-## Security notes
-
-- Your PAT never leaves your browser except in requests to `api.github.com`
-- Shared config links contain only the watchlist, never tokens
-- Prefer fine-grained tokens scoped to read-only access on the repos you watch
-- Each account's token is stored separately from its watchlist, so nothing that serialises a watchlist can carry a token
+React · Vite · TypeScript · TanStack Query · Vercel Functions · GitHub OAuth · GitHub GraphQL API

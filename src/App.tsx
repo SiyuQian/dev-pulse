@@ -24,17 +24,12 @@ const PeoplePage = lazy(() =>
 const StatsPage = lazy(() =>
   import('./features/stats/StatsPage').then((m) => ({ default: m.StatsPage })),
 )
-const SettingsPage = lazy(() =>
-  import('./features/settings/SettingsPage').then((m) => ({ default: m.SettingsPage })),
-)
 
 function Shell() {
   const path = useLocation().pathname
-  // Settings is configuration, not triage — the attention strip would only be
-  // noise there. Mine hides it for a different reason: the strip is derived from
-  // the watchlist, and sitting it directly above a banner that says "this view
-  // ignores the watchlist" is a contradiction the reader has to untangle.
-  const bare = path === '/settings' || path === '/mine'
+  // Mine hides the attention strip because it intentionally reads the viewer's
+  // authored PRs across GitHub rather than the automatically discovered repo scope.
+  const bare = path === '/mine'
   return (
     <div className="shell">
       <Rail />
@@ -49,7 +44,6 @@ function Shell() {
               <Route path="/reviews" element={<ReviewsPage />} />
               <Route path="/people" element={<PeoplePage />} />
               <Route path="/stats" element={<StatsPage />} />
-              <Route path="/settings" element={<SettingsPage />} />
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
           </Suspense>

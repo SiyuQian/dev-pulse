@@ -135,11 +135,7 @@ export function BoardPage() {
     )
   }
   if (config.repos.length === 0 && config.users.length === 0) {
-    return (
-      <Empty>
-        Watchlist is empty. Add repos or people in <Link to="/settings">Settings</Link>.
-      </Empty>
-    )
+    return <Empty>No active repositories were found for this GitHub account.</Empty>
   }
   // With a persisted cache, `error` and `data` coexist: a failed background
   // refetch must not throw away rows we can still show. TopBar marks them stale.

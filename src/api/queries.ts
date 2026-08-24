@@ -1,13 +1,13 @@
 import { useInfiniteQuery, useQuery, type QueryClient } from '@tanstack/react-query'
 import { useEffect, useMemo } from 'react'
 import {
+  fetchAllViewerRepos,
   fetchMergedPrs,
   fetchMyMergedPrs,
   fetchMyOpenPrs,
   fetchOpenPrs,
   fetchOrgMemberPage,
   fetchViewerLogin,
-  fetchViewerRepoPage,
   GitHubError,
 } from './github'
 import type { OrgMember, OrgMemberCursor, SkippedOrg, ViewerRepo } from './github'
@@ -107,47 +107,31 @@ export function useViewer(token: string) {
   })
 }
 
-/** Keeps a large account's repo walk bounded — 100 repos per page. */
-const VIEWER_REPO_PAGE_LIMIT = 5
-
 export interface ViewerReposResult {
   repos: ViewerRepo[]
-  /** True only until the *first* page lands — later pages arrive silently. */
+  /** True until the complete repository connection has loaded. */
   isLoading: boolean
+  /** Kept for the legacy Settings component; complete discovery no longer renders partial data. */
   isBackfilling: boolean
   error: Error | null
 }
 
 /**
- * Repos for the Settings picker. The first page resolves in one round trip and
- * renders immediately; remaining pages are fetched in the background so the
- * picker is never gated on a serial cursor walk.
+ * Every repository visible to the session. This deliberately resolves the full
+ * cursor walk before returning so the zero-config dashboard never renders a
+ * partial scope or starts repeated PR queries while discovery is still changing.
  */
 export function useViewerRepos(token: string): ViewerReposResult {
-  const { data, error, isLoading, hasNextPage, isFetchingNextPage, fetchNextPage } =
-    useInfiniteQuery({
-      queryKey: ['viewerRepos', accountKey(token)],
-      queryFn: ({ pageParam }) => fetchViewerRepoPage(token, pageParam),
-      initialPageParam: null as string | null,
-      getNextPageParam: (last, pages) =>
-        pages.length >= VIEWER_REPO_PAGE_LIMIT ? undefined : last.nextCursor,
-      enabled: Boolean(token),
-      staleTime: 10 * 60 * 1000,
-      // Named `cause` rather than `error`: this hook destructures an outer
-      // `error` above, and shadowing it trips no-shadow.
-      retry: (failureCount, cause) =>
-        failureCount < 2 && !(cause instanceof GitHubError && cause.status === 401),
-    })
+  const { data, error, isLoading } = useQuery({
+    queryKey: ['viewerRepos', accountKey(token)],
+    queryFn: () => fetchAllViewerRepos(token),
+    enabled: Boolean(token),
+    staleTime: 10 * 60 * 1000,
+    retry: (failureCount, cause) =>
+      failureCount < 2 && !(cause instanceof GitHubError && cause.status === 401),
+  })
 
-  // Drive the backfill from the hook rather than the picker, so every consumer
-  // gets the full list without having to know about pagination.
-  useEffect(() => {
-    if (hasNextPage && !isFetchingNextPage) void fetchNextPage()
-  }, [hasNextPage, isFetchingNextPage, fetchNextPage])
-
-  const repos = useMemo(() => data?.pages.flatMap((page) => page.repos) ?? [], [data])
-
-  return { repos, isLoading, isBackfilling: isFetchingNextPage, error }
+  return { repos: data ?? [], isLoading, isBackfilling: false, error }
 }
 
 /**

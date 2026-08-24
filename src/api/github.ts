@@ -1,7 +1,5 @@
 import type { CiStatus, PullRequest, RateLimitInfo, ReviewDecision } from './types'
 
-const GRAPHQL_URL = 'https://api.github.com/graphql'
-
 export class GitHubError extends Error {
   status?: number
 
@@ -13,17 +11,15 @@ export class GitHubError extends Error {
 }
 
 async function graphql<T>(
-  token: string,
+  sessionIdentity: string,
   query: string,
   variables: Record<string, unknown>,
 ): Promise<T> {
-  if (!token) throw new GitHubError('No GitHub token configured')
-  const res = await fetch(GRAPHQL_URL, {
+  if (!sessionIdentity) throw new GitHubError('No authenticated GitHub session')
+  const res = await fetch('/api/github/graphql', {
     method: 'POST',
-    headers: {
-      Authorization: `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'same-origin',
     body: JSON.stringify({ query, variables }),
   })
   if (!res.ok) {
@@ -59,14 +55,22 @@ interface SearchPrNode {
 }
 
 interface SearchResult {
-  search: { issueCount: number; nodes: SearchPrNode[] }
+  search: {
+    issueCount: number
+    nodes: SearchPrNode[]
+    pageInfo?: { hasNextPage: boolean; endCursor: string | null }
+  }
   rateLimit: { remaining: number; limit: number; resetAt: string }
 }
 
 const SEARCH_PRS_QUERY = /* GraphQL */ `
-  query SearchPRs($q: String!, $first: Int!) {
-    search(query: $q, type: ISSUE, first: $first) {
+  query SearchPRs($q: String!, $first: Int!, $after: String) {
+    search(query: $q, type: ISSUE, first: $first, after: $after) {
       issueCount
+      pageInfo {
+        hasNextPage
+        endCursor
+      }
       nodes {
         ... on PullRequest {
           id
@@ -117,6 +121,36 @@ const SEARCH_PRS_QUERY = /* GraphQL */ `
   }
 `
 
+const SEARCH_PAGE_LIMIT = 10
+
+async function fetchOpenSearch(token: string, q: string): Promise<SearchResult> {
+  const nodes: SearchPrNode[] = []
+  let after: string | null = null
+  let issueCount = 0
+  let rateLimit = { remaining: 0, limit: 0, resetAt: '' }
+
+  for (let page = 0; page < SEARCH_PAGE_LIMIT; page++) {
+    const result: SearchResult = await graphql<SearchResult>(token, SEARCH_PRS_QUERY, {
+      q,
+      first: 100,
+      after,
+    })
+    nodes.push(...result.search.nodes)
+    issueCount = result.search.issueCount
+    rateLimit = result.rateLimit
+    if (issueCount > SEARCH_PAGE_LIMIT * 100) {
+      throw new GitHubError('GitHub search exceeds the 1,000-result limit')
+    }
+    if (!result.search.pageInfo?.hasNextPage) {
+      return { search: { issueCount, nodes }, rateLimit }
+    }
+    after = result.search.pageInfo.endCursor
+    if (!after) throw new GitHubError('GitHub search pagination returned no cursor')
+  }
+
+  throw new GitHubError('GitHub search exceeds the 1,000-result limit')
+}
+
 function toPullRequest(node: SearchPrNode): PullRequest {
   return {
     id: node.id,
@@ -143,6 +177,29 @@ export interface OpenPrsResult {
   rateLimit: RateLimitInfo
 }
 
+const REPOS_PER_SEARCH = 20
+const SEARCH_QUERY_LIMIT = 256
+
+function repoSearches(repos: string[], prefix: string): string[] {
+  const searches: string[] = []
+  let qualifiers: string[] = []
+
+  const flush = () => {
+    if (qualifiers.length === 0) return
+    searches.push(`${prefix} ${qualifiers.join(' ')}`)
+    qualifiers = []
+  }
+
+  for (const repo of repos) {
+    const qualifier = `repo:${repo}`
+    const candidate = `${prefix} ${[...qualifiers, qualifier].join(' ')}`
+    if (qualifiers.length >= REPOS_PER_SEARCH || candidate.length > SEARCH_QUERY_LIMIT) flush()
+    qualifiers.push(qualifier)
+  }
+  flush()
+  return searches
+}
+
 // One search query covers repos + authors; GitHub ORs multiple repo:/author: qualifiers of the same kind.
 export function buildSearchQuery(
   repos: string[],
@@ -162,13 +219,11 @@ export async function fetchOpenPrs(
   // repo: and author: qualifiers AND together across kinds, so when both are set
   // we run two searches (watched repos, watched authors) and merge.
   const queries: string[] = []
-  if (repos.length > 0) queries.push(buildSearchQuery(repos, []))
+  queries.push(...repoSearches(repos, 'is:pr is:open'))
   if (users.length > 0) queries.push(`is:pr is:open ${users.map((u) => `author:${u}`).join(' ')}`)
   if (queries.length === 0) return { prs: [], rateLimit: { remaining: 0, limit: 0, resetAt: '' } }
 
-  const results = await Promise.all(
-    queries.map((q) => graphql<SearchResult>(token, SEARCH_PRS_QUERY, { q, first: 50 })),
-  )
+  const results = await Promise.all(queries.map((q) => fetchOpenSearch(token, q)))
   const seen = new Set<string>()
   const prs: PullRequest[] = []
   for (const result of results) {
@@ -183,9 +238,6 @@ export async function fetchOpenPrs(
   return { prs, rateLimit: { remaining: last.remaining, limit: last.limit, resetAt: last.resetAt } }
 }
 
-/** GitHub's search API caps `first` at 100, and one page is a whole person's queue. */
-const MY_PRS_PAGE_SIZE = 100
-
 /**
  * Every PR you have open, anywhere — deliberately not scoped to the watchlist.
  *
@@ -195,10 +247,7 @@ const MY_PRS_PAGE_SIZE = 100
  * states its scope on screen: its counts will not match the board's.
  */
 export async function fetchMyOpenPrs(token: string): Promise<OpenPrsResult> {
-  const result = await graphql<SearchResult>(token, SEARCH_PRS_QUERY, {
-    q: 'is:pr is:open author:@me',
-    first: MY_PRS_PAGE_SIZE,
-  })
+  const result = await fetchOpenSearch(token, 'is:pr is:open author:@me')
   const prs = result.search.nodes.filter((node) => node.id).map(toPullRequest)
   prs.sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1))
   return { prs, rateLimit: result.rateLimit }
@@ -218,9 +267,13 @@ interface MergedPrNode {
 }
 
 const SEARCH_MERGED_QUERY = /* GraphQL */ `
-  query SearchMerged($q: String!, $first: Int!) {
-    search(query: $q, type: ISSUE, first: $first) {
+  query SearchMerged($q: String!, $first: Int!, $after: String) {
+    search(query: $q, type: ISSUE, first: $first, after: $after) {
       issueCount
+      pageInfo {
+        hasNextPage
+        endCursor
+      }
       nodes {
         ... on PullRequest {
           id
@@ -242,6 +295,40 @@ const SEARCH_MERGED_QUERY = /* GraphQL */ `
     }
   }
 `
+
+interface MergedSearchResult {
+  search: {
+    issueCount?: number
+    nodes: MergedPrNode[]
+    pageInfo?: { hasNextPage: boolean; endCursor: string | null }
+  }
+}
+
+async function fetchMergedSearch(token: string, q: string): Promise<MergedPrNode[]> {
+  const nodes: MergedPrNode[] = []
+  let after: string | null = null
+
+  for (let page = 0; page < SEARCH_PAGE_LIMIT; page++) {
+    const result: MergedSearchResult = await graphql<MergedSearchResult>(
+      token,
+      SEARCH_MERGED_QUERY,
+      {
+        q,
+        first: 100,
+        after,
+      },
+    )
+    nodes.push(...result.search.nodes)
+    if ((result.search.issueCount ?? 0) > SEARCH_PAGE_LIMIT * 100) {
+      throw new GitHubError('GitHub search exceeds the 1,000-result limit')
+    }
+    if (!result.search.pageInfo?.hasNextPage) return nodes
+    after = result.search.pageInfo.endCursor
+    if (!after) throw new GitHubError('GitHub search pagination returned no cursor')
+  }
+
+  throw new GitHubError('GitHub search exceeds the 1,000-result limit')
+}
 
 export interface MergedPr {
   id: string
@@ -279,11 +366,11 @@ function toMergedPr(node: MergedPrNode): MergedPr {
  * "Merged" toggle. Same `author:@me` reasoning as fetchMyOpenPrs.
  */
 export async function fetchMyMergedPrs(token: string, sinceIso: string): Promise<MergedPr[]> {
-  const data = await graphql<{ search: { nodes: MergedPrNode[] } }>(token, SEARCH_MERGED_QUERY, {
-    q: `is:pr is:merged author:@me merged:>=${sinceIso.slice(0, 10)}`,
-    first: MY_PRS_PAGE_SIZE,
-  })
-  const prs = data.search.nodes.filter((node) => node.id).map(toMergedPr)
+  const nodes = await fetchMergedSearch(
+    token,
+    `is:pr is:merged author:@me merged:>=${sinceIso.slice(0, 10)}`,
+  )
+  const prs = nodes.filter((node) => node.id).map(toMergedPr)
   prs.sort((a, b) => (a.mergedAt < b.mergedAt ? 1 : -1))
   return prs
 }
@@ -296,21 +383,16 @@ export async function fetchMergedPrs(
 ): Promise<MergedPr[]> {
   const since = sinceIso.slice(0, 10)
   const queries: string[] = []
-  if (repos.length > 0)
-    queries.push(`is:pr is:merged merged:>=${since} ${repos.map((r) => `repo:${r}`).join(' ')}`)
+  queries.push(...repoSearches(repos, `is:pr is:merged merged:>=${since}`))
   if (users.length > 0)
     queries.push(`is:pr is:merged merged:>=${since} ${users.map((u) => `author:${u}`).join(' ')}`)
   if (queries.length === 0) return []
 
-  const results = await Promise.all(
-    queries.map((q) =>
-      graphql<{ search: { nodes: MergedPrNode[] } }>(token, SEARCH_MERGED_QUERY, { q, first: 100 }),
-    ),
-  )
+  const results = await Promise.all(queries.map((q) => fetchMergedSearch(token, q)))
   const seen = new Set<string>()
   const prs: MergedPr[] = []
-  for (const result of results) {
-    for (const node of result.search.nodes) {
+  for (const nodes of results) {
+    for (const node of nodes) {
       if (!node.id || seen.has(node.id)) continue
       seen.add(node.id)
       prs.push(toMergedPr(node))
@@ -379,7 +461,29 @@ export async function fetchViewerRepoPage(
     }
   } = await graphql(token, VIEWER_REPOS_QUERY, { first: 100, after })
   const { nodes, pageInfo } = data.viewer.repositories
+  if (pageInfo.hasNextPage && !pageInfo.endCursor) {
+    throw new GitHubError('Repository pagination returned no cursor')
+  }
   return { repos: nodes, nextCursor: pageInfo.hasNextPage ? pageInfo.endCursor : null }
+}
+
+/** Walks the complete visible repository connection before the dashboard renders. */
+export async function fetchAllViewerRepos(token: string): Promise<ViewerRepo[]> {
+  const repos: ViewerRepo[] = []
+  const seenCursors = new Set<string>()
+  let cursor: string | null = null
+
+  do {
+    const page = await fetchViewerRepoPage(token, cursor)
+    repos.push(...page.repos)
+    cursor = page.nextCursor
+    if (cursor) {
+      if (seenCursors.has(cursor)) throw new GitHubError('Repository pagination cursor repeated')
+      seenCursors.add(cursor)
+    }
+  } while (cursor)
+
+  return repos
 }
 
 export interface OrgMember {

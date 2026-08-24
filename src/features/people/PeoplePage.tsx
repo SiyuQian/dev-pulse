@@ -84,11 +84,7 @@ export function PeoplePage() {
     )
   }
   if (config.repos.length === 0 && config.users.length === 0) {
-    return (
-      <Empty>
-        Watchlist is empty. Add repos or people in <Link to="/settings">Settings</Link>.
-      </Empty>
-    )
+    return <Empty>No active repositories were found for this GitHub account.</Empty>
   }
   if (open.error && !open.data)
     return <Empty error>Failed to load activity: {open.error.message}</Empty>
