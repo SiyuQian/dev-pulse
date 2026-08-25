@@ -10,7 +10,7 @@ import { scopeSummary } from '../shared/format'
  * The wordmark lives in the rail, so it is deliberately absent here.
  */
 export function TopBar() {
-  const { token, config } = useAppState()
+  const { token, config, scopeTruncated } = useAppState()
   // Mine reads a different, unscoped query. Freshness and Refresh have to follow
   // whatever the page below is actually showing, or the bar reports on data the
   // reader can't see — and Refresh would leave the visible rows untouched.
@@ -32,7 +32,19 @@ export function TopBar() {
   return (
     <header className="top">
       <AccountSwitcher />
-      {scope && <span className="crumbs">{scope}</span>}
+      {scope && (
+        <span
+          className="crumbs"
+          title={
+            scopeTruncated
+              ? 'Repository discovery hit its cap — only the most recently pushed repos are watched.'
+              : undefined
+          }
+        >
+          {scope}
+          {scopeTruncated && !onMine ? ' (partial)' : ''}
+        </span>
+      )}
 
       <span className="top-spacer" />
 

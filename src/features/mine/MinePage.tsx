@@ -1,5 +1,4 @@
 import { useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
 import { useMyMergedPrs, useMyOpenPrs } from '../../api/queries'
 import { useAppState } from '../../state/AppState'
 import type { PullRequest } from '../../api/types'
@@ -227,32 +226,33 @@ function MergedView({ query }: { query: string }) {
   const { data, isPending, error } = useMyMergedPrs(token, since)
 
   const visible = useMemo(
-    () => (data ?? []).filter((pr) => matches(query, pr.title, pr.repo, `#${pr.number}`)),
+    () => (data?.prs ?? []).filter((pr) => matches(query, pr.title, pr.repo, `#${pr.number}`)),
     [data, query],
   )
 
   if (error && !data) return <Empty error>Failed to load your merged PRs: {error.message}</Empty>
   if (isPending || !data) return <Empty>Loading your merged pull requests…</Empty>
 
-  const medianCycle = median(data.map((pr) => pr.cycleTimeHours))
+  const medianCycle = median(data.prs.map((pr) => pr.cycleTimeHours))
 
   return (
     <>
       <ScopeBar
         query={`is:pr is:merged author:@me merged:>=${since.slice(0, 10)}`}
         offScope={0}
-        total={data.length}
+        total={data.prs.length}
       />
       <SectionHead
         title="Merged in the last 30 days"
         sub={[
-          `${data.length} merged`,
+          `${data.prs.length} merged`,
+          data.truncated ? 'partial — search capped at 1,000 results' : null,
           medianCycle === null ? null : `median cycle ${formatHours(medianCycle)}`,
         ]
           .filter(Boolean)
           .join(' · ')}
       />
-      {data.length === 0 ? (
+      {data.prs.length === 0 ? (
         <Empty>Nothing of yours merged in the last {MERGED_WINDOW_DAYS} days.</Empty>
       ) : visible.length === 0 ? (
         <Empty>No PRs match this filter.</Empty>
@@ -309,18 +309,9 @@ function MergedView({ query }: { query: string }) {
  * exactly the thing the board cannot show.
  */
 export function MinePage() {
-  const { token } = useAppState()
   const [state, setState] = useState<State>('open')
   const [blocked, setBlocked] = useState<Blocked>('all')
   const [query, setQuery] = useState('')
-
-  if (!token) {
-    return (
-      <Empty>
-        No GitHub token configured. Add one in <Link to="/settings">Settings</Link>.
-      </Empty>
-    )
-  }
 
   return (
     <div className="fade-in">

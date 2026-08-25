@@ -1,16 +1,14 @@
-import { useInfiniteQuery, useQuery, type QueryClient } from '@tanstack/react-query'
-import { useEffect, useMemo } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import {
   fetchAllViewerRepos,
   fetchMergedPrs,
   fetchMyMergedPrs,
   fetchMyOpenPrs,
   fetchOpenPrs,
-  fetchOrgMemberPage,
   fetchViewerLogin,
   GitHubError,
 } from './github'
-import type { OrgMember, OrgMemberCursor, SkippedOrg, ViewerRepo } from './github'
+import type { ViewerRepo } from './github'
 import type { WatchConfig } from '../storage/config'
 
 /**
@@ -29,15 +27,15 @@ function accountKey(token: string): string {
 }
 
 /**
- * Drops every cache entry scoped to a token. Removing an account deletes its
- * PAT, so its board can never be refetched or invalidated again — and because
- * the cache is persisted, its PRs would otherwise sit in localStorage until
- * maxAge. Lives here because the fingerprint's position in the key does.
+ * 401 means the session is gone — retrying cannot fix it. 403 is GitHub's
+ * secondary rate limit — retrying immediately replays the whole chunked
+ * fan-out and digs the hole deeper.
  */
-export function removeAccountQueries(client: QueryClient, token: string): void {
-  if (!token) return
-  const key = accountKey(token)
-  client.removeQueries({ predicate: (query) => query.queryKey[1] === key })
+function retryUnlessFatal(failureCount: number, error: Error): boolean {
+  return (
+    failureCount < 2 &&
+    !(error instanceof GitHubError && (error.status === 401 || error.status === 403))
+  )
 }
 
 export function useOpenPrs(token: string, config: WatchConfig) {
@@ -47,8 +45,7 @@ export function useOpenPrs(token: string, config: WatchConfig) {
     enabled: Boolean(token) && (config.repos.length > 0 || config.users.length > 0),
     refetchInterval: 2 * 60 * 1000,
     staleTime: 60 * 1000,
-    retry: (failureCount, error) =>
-      failureCount < 2 && !(error instanceof GitHubError && error.status === 401),
+    retry: retryUnlessFatal,
   })
 }
 
@@ -58,8 +55,7 @@ export function useMergedPrs(token: string, config: WatchConfig, sinceIso: strin
     queryFn: () => fetchMergedPrs(token, config.repos, config.users, sinceIso),
     enabled: Boolean(token) && (config.repos.length > 0 || config.users.length > 0),
     staleTime: 10 * 60 * 1000,
-    retry: (failureCount, error) =>
-      failureCount < 2 && !(error instanceof GitHubError && error.status === 401),
+    retry: retryUnlessFatal,
   })
 }
 
@@ -80,8 +76,7 @@ export function useMyOpenPrs(token: string, enabled = true) {
     enabled: Boolean(token) && enabled,
     refetchInterval: 2 * 60 * 1000,
     staleTime: 60 * 1000,
-    retry: (failureCount, error) =>
-      failureCount < 2 && !(error instanceof GitHubError && error.status === 401),
+    retry: retryUnlessFatal,
   })
 }
 
@@ -92,8 +87,7 @@ export function useMyMergedPrs(token: string, sinceIso: string, enabled = true) 
     queryFn: () => fetchMyMergedPrs(token, sinceIso),
     enabled: Boolean(token) && enabled,
     staleTime: 10 * 60 * 1000,
-    retry: (failureCount, error) =>
-      failureCount < 2 && !(error instanceof GitHubError && error.status === 401),
+    retry: retryUnlessFatal,
   })
 }
 
@@ -109,17 +103,17 @@ export function useViewer(token: string) {
 
 export interface ViewerReposResult {
   repos: ViewerRepo[]
-  /** True until the complete repository connection has loaded. */
+  /** True until the repository connection has loaded (bounded walk). */
   isLoading: boolean
-  /** Kept for the legacy Settings component; complete discovery no longer renders partial data. */
-  isBackfilling: boolean
+  /** The walk hit its page cap; scope covers the most recently pushed repos only. */
+  isTruncated: boolean
   error: Error | null
 }
 
 /**
- * Every repository visible to the session. This deliberately resolves the full
- * cursor walk before returning so the zero-config dashboard never renders a
- * partial scope or starts repeated PR queries while discovery is still changing.
+ * Every repository visible to the session, up to the bounded walk's cap. The
+ * query is persisted to disk (see storage/queryCache.ts) so a reload paints the
+ * dashboard from the cached scope instead of gating on the serial cursor walk.
  */
 export function useViewerRepos(token: string): ViewerReposResult {
   const { data, error, isLoading } = useQuery({
@@ -127,88 +121,13 @@ export function useViewerRepos(token: string): ViewerReposResult {
     queryFn: () => fetchAllViewerRepos(token),
     enabled: Boolean(token),
     staleTime: 10 * 60 * 1000,
-    retry: (failureCount, cause) =>
-      failureCount < 2 && !(cause instanceof GitHubError && cause.status === 401),
+    retry: retryUnlessFatal,
   })
 
-  return { repos: data ?? [], isLoading, isBackfilling: false, error }
-}
-
-/**
- * 100 members per page. Twenty pages because real enterprise orgs run into the
- * thousands and `membersWithRole` has no server-side search (checked against the
- * live schema — only cursor args), so the only way to make a teammate findable
- * is to have walked far enough to have them. The walk is one cheap request per
- * page and the result is cached for 30 minutes.
- */
-const ORG_MEMBER_PAGE_LIMIT = 20
-
-export interface OrgMembersResult {
-  members: OrgMember[]
-  /** True only until the *first* page lands — later pages arrive silently. */
-  isLoading: boolean
-  isBackfilling: boolean
-  error: Error | null
-  /** Orgs the token could see but whose member list it couldn't read. */
-  skipped: SkippedOrg[]
-  /** How many orgs the token reports at all. Zero is its own diagnosis. */
-  orgCount: number
-  /** The org is bigger than the page cap — the list is real but incomplete. */
-  isTruncated: boolean
-}
-
-/**
- * Teammates from the viewer's orgs, for the people picker in Settings. Same
- * shape as useViewerRepos: page one renders, the rest backfills behind it.
- *
- * Errors are the picker's normal case, not an exception — a token without org
- * read access simply yields nothing and the picker falls back to typing a
- * login by hand.
- */
-export function useOrgMembers(token: string): OrgMembersResult {
-  const { data, error, isLoading, hasNextPage, isFetchingNextPage, fetchNextPage } =
-    useInfiniteQuery({
-      queryKey: ['orgMembers', accountKey(token)],
-      queryFn: ({ pageParam }) => fetchOrgMemberPage(token, pageParam),
-      initialPageParam: null as OrgMemberCursor | null,
-      getNextPageParam: (last, pages) =>
-        pages.length >= ORG_MEMBER_PAGE_LIMIT ? undefined : last.next,
-      enabled: Boolean(token),
-      staleTime: 30 * 60 * 1000,
-      retry: (failureCount, cause) =>
-        failureCount < 2 && !(cause instanceof GitHubError && cause.status === 401),
-    })
-
-  useEffect(() => {
-    if (hasNextPage && !isFetchingNextPage) void fetchNextPage()
-  }, [hasNextPage, isFetchingNextPage, fetchNextPage])
-
-  // One person can be in two watched orgs; the picker should list them once.
-  const members = useMemo(() => {
-    const byLogin = new Map<string, OrgMember>()
-    for (const page of data?.pages ?? []) {
-      for (const member of page.members)
-        if (!byLogin.has(member.login)) byLogin.set(member.login, member)
-    }
-    // Named accounts first. Big orgs are full of bots and SCIM-provisioned
-    // service accounts whose login is a hex blob and whose name is null; sorting
-    // by login alone puts those at the very top and buries every actual person.
-    return [...byLogin.values()].sort((a, b) => {
-      if (Boolean(a.name) !== Boolean(b.name)) return a.name ? -1 : 1
-      return (a.name ?? a.login).localeCompare(b.name ?? b.login)
-    })
-  }, [data])
-
-  const pages = data?.pages ?? []
-  const last = pages.at(-1)
-
   return {
-    members,
+    repos: data?.repos ?? [],
     isLoading,
-    isBackfilling: isFetchingNextPage,
+    isTruncated: data?.truncated ?? false,
     error,
-    skipped: pages.flatMap((page) => page.skipped),
-    orgCount: last?.orgs.length ?? 0,
-    isTruncated: pages.length >= ORG_MEMBER_PAGE_LIMIT && Boolean(last?.next),
   }
 }

@@ -58,7 +58,7 @@ describe('GitHub GraphQL proxy', () => {
     process.env.SESSION_SECRET = secret
     const { capture, res } = response()
 
-    await handler(request('query { viewer { login } }', false), res)
+    await handler(request('query ViewerLogin { viewer { login } }', false), res)
 
     expect(capture.statusCode).toBe(401)
     expect(capture.body).toEqual({ error: 'Not authenticated' })
@@ -69,7 +69,7 @@ describe('GitHub GraphQL proxy', () => {
     process.env.ALLOWED_GITHUB_USERS = 'someone-else'
     const { capture, res } = response()
 
-    await handler(request('query { viewer { login } }'), res)
+    await handler(request('query ViewerLogin { viewer { login } }'), res)
 
     expect(capture.statusCode).toBe(401)
     expect(capture.body).toEqual({ error: 'Not authenticated' })
@@ -77,7 +77,7 @@ describe('GitHub GraphQL proxy', () => {
 
   it('returns 400 for malformed JSON instead of crashing the function', async () => {
     process.env.SESSION_SECRET = secret
-    const req = request('query { viewer { login } }')
+    const req = request('query ViewerLogin { viewer { login } }')
     req.body = '{'
     const { capture, res } = response()
 
@@ -99,6 +99,21 @@ describe('GitHub GraphQL proxy', () => {
     expect(upstream).not.toHaveBeenCalled()
   })
 
+  it('rejects queries outside the pinned operation allowlist', async () => {
+    process.env.SESSION_SECRET = secret
+    const upstream = vi.fn<() => void>()
+    vi.stubGlobal('fetch', upstream)
+    const { capture, res } = response()
+
+    await handler(
+      request('query Exfiltrate { viewer { repositories(first: 100) { nodes { id } } } }'),
+      res,
+    )
+
+    expect(capture.statusCode).toBe(403)
+    expect(upstream).not.toHaveBeenCalled()
+  })
+
   it('returns 502 when GitHub cannot be reached', async () => {
     process.env.SESSION_SECRET = secret
     vi.stubGlobal(
@@ -107,7 +122,7 @@ describe('GitHub GraphQL proxy', () => {
     )
     const { capture, res } = response()
 
-    await handler(request('query { viewer { login } }'), res)
+    await handler(request('query ViewerLogin { viewer { login } }'), res)
 
     expect(capture.statusCode).toBe(502)
     expect(capture.body).toEqual({ error: 'GitHub is unavailable' })
@@ -123,7 +138,7 @@ describe('GitHub GraphQL proxy', () => {
     vi.stubGlobal('fetch', vi.fn<typeof fetch>().mockResolvedValueOnce(unreadable))
     const { capture, res } = response()
 
-    await handler(request('query { viewer { login } }'), res)
+    await handler(request('query ViewerLogin { viewer { login } }'), res)
 
     expect(capture.statusCode).toBe(502)
     expect(capture.body).toEqual({ error: 'GitHub is unavailable' })
@@ -142,7 +157,7 @@ describe('GitHub GraphQL proxy', () => {
     vi.stubGlobal('fetch', upstream)
     const { capture, res } = response()
 
-    await handler(request('query { viewer { login } }'), res)
+    await handler(request('query ViewerLogin { viewer { login } }'), res)
 
     expect(capture.statusCode).toBe(200)
     expect(upstream).toHaveBeenCalledWith(

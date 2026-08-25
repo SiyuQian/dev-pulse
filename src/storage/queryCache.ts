@@ -12,14 +12,17 @@ export const QUERY_CACHE_KEY = 'devpulse:query-cache:v1'
  * never match a key the hooks ask for. The storage key itself stays at v1 on
  * purpose — a buster mismatch calls removeClient(), whereas renaming the key
  * would orphan the old blob with nothing left to clean it up.
+ *
+ * v3: viewerRepos joined the persisted set and fetchAllViewerRepos changed
+ * shape from ViewerRepo[] to { repos, truncated }.
  */
-const QUERY_CACHE_BUSTER = 'v2'
+const QUERY_CACHE_BUSTER = 'v3'
 
 /** Yesterday's board is worth painting for a second; last week's is just misleading. */
 const QUERY_CACHE_MAX_AGE = 24 * 60 * 60 * 1000
 
 /**
- * An allowlist, deliberately, not a denylist: only the two queries that gate
+ * An allowlist, deliberately, not a denylist: only the queries that gate
  * first paint go to disk. A persisted cache blob is exactly the kind of thing
  * that ends up pasted into a bug report, so anything added later stays off disk
  * until someone has checked what it carries — the conservative default the
@@ -30,7 +33,7 @@ const QUERY_CACHE_MAX_AGE = 24 * 60 * 60 * 1000
  * It also scopes every entry per account, so two accounts watching the same
  * repos restore their own board rather than each other's.
  */
-const PERSISTED_QUERIES = new Set(['openPrs', 'mergedPrs'])
+const PERSISTED_QUERIES = new Set(['openPrs', 'mergedPrs', 'viewerRepos'])
 
 /** Structurally typed rather than `Query`, so tests can pass a two-field stub. */
 export interface PersistableQuery {

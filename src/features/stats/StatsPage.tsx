@@ -1,5 +1,4 @@
 import { useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
 import { useMergedPrs } from '../../api/queries'
 import { useAppState } from '../../state/AppState'
 import {
@@ -42,17 +41,11 @@ export function StatsPage() {
   // Stable per (mount, window) so the query key doesn't churn.
   const [now] = useState(() => Date.now())
   const since = useMemo(() => new Date(now - days * 86_400_000).toISOString(), [now, days])
-  const { data: merged, isPending, error } = useMergedPrs(token, config, since)
+  const { data, isPending, error } = useMergedPrs(token, config, since)
 
-  if (!token) {
-    return (
-      <Empty>
-        No GitHub token configured. Add one in <Link to="/settings">Settings</Link>.
-      </Empty>
-    )
-  }
-  if (error && !merged) return <Empty error>Failed to load stats: {error.message}</Empty>
-  if (isPending) return <Empty>Loading merge history…</Empty>
+  if (error && !data) return <Empty error>Failed to load stats: {error.message}</Empty>
+  if (isPending || !data) return <Empty>Loading merge history…</Empty>
+  const merged = data.prs
 
   const windowSeg = (
     <Seg
@@ -115,7 +108,15 @@ export function StatsPage() {
 
   return (
     <div className="fade-in">
-      <SectionHead title="Trends" sub={`${merged.length} merged · last ${days} days`}>
+      <SectionHead
+        title="Trends"
+        sub={[
+          `${merged.length} merged · last ${days} days`,
+          data.truncated ? 'partial — search capped at 1,000 results' : null,
+        ]
+          .filter(Boolean)
+          .join(' · ')}
+      >
         {windowSeg}
       </SectionHead>
 

@@ -203,6 +203,26 @@ describe('GitHub OAuth callback', () => {
     expect(upstream).not.toHaveBeenCalled()
   })
 
+  it('never issues a session for a login outside the allowlist', async () => {
+    const upstream = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ access_token: 'oauth-token' }), { status: 200 }),
+      )
+      .mockResolvedValueOnce(new Response(JSON.stringify({ login: 'stranger' }), { status: 200 }))
+    vi.stubGlobal('fetch', upstream)
+    const { capture, res } = response()
+
+    await handler(request(), res)
+
+    expect(capture.redirect?.url).toBe('https://dev-pulse.siyu.co.nz/?auth=forbidden#/')
+    const cookies = capture.headers['Set-Cookie']
+    const flat = Array.isArray(cookies) ? cookies : [cookies as string]
+    for (const value of flat) {
+      expect(value).not.toMatch(new RegExp(`^${SESSION_COOKIE}=[^;]`))
+    }
+  })
+
   it('issues an encrypted session and clears OAuth state after success', async () => {
     const upstream = vi
       .fn<typeof fetch>()

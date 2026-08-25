@@ -418,9 +418,14 @@ kbd {
   border-color: var(--line-hi);
   filter: none;
 }
+/* Rendered as a <button> in a POST form; strip the button chrome. */
 .acct-logout {
   color: var(--ink-3);
   font: 500 10px/1 var(--mono);
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
 }
 .acct-logout:hover {
   color: var(--ink);

@@ -1,5 +1,4 @@
 import { useMemo, useState, type CSSProperties } from 'react'
-import { Link } from 'react-router-dom'
 import { useMergedPrs, useOpenPrs, useViewer } from '../../api/queries'
 import { useAppState } from '../../state/AppState'
 import { Avatar, Cell, Empty, Grid, SectionHead, Seg, Stat } from '../shared/ui'
@@ -64,7 +63,7 @@ export function PeoplePage() {
       // Reviewers count as active people even with no open PRs of their own.
       for (const reviewer of pr.requestedReviewers) get(reviewer).reviewRequests += 1
     }
-    for (const pr of merged.data ?? []) {
+    for (const pr of merged.data?.prs ?? []) {
       const p = get(pr.author)
       p.merged += 1
       p.additions += pr.additions
@@ -76,13 +75,6 @@ export function PeoplePage() {
     )
   }, [open.data, merged.data, staleDays])
 
-  if (!token) {
-    return (
-      <Empty>
-        No GitHub token configured. Add one in <Link to="/settings">Settings</Link>.
-      </Empty>
-    )
-  }
   if (config.repos.length === 0 && config.users.length === 0) {
     return <Empty>No active repositories were found for this GitHub account.</Empty>
   }
@@ -91,7 +83,7 @@ export function PeoplePage() {
   if (open.isPending || !open.data) return <Empty>Loading team activity…</Empty>
 
   const totalOpen = open.data.prs.length
-  const totalMerged = merged.data?.length ?? 0
+  const totalMerged = merged.data?.prs.length ?? 0
   const maxOpen = Math.max(1, ...people.map((p) => p.open))
   const maxMerged = Math.max(1, ...people.map((p) => p.merged))
   const medianCycle = median(people.flatMap((p) => p.cycleTimes))

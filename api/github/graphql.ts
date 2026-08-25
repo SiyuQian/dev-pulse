@@ -6,6 +6,13 @@ interface GraphQLRequest {
   variables?: unknown
 }
 
+/**
+ * The OAuth `repo` grant is read-write; read-only is enforced here, not by the
+ * grant. Only the app's own named operations (src/api/github.ts) are forwarded,
+ * which rejects mutations and arbitrary queries alike.
+ */
+const ALLOWED_OPERATIONS = new Set(['SearchPRs', 'SearchMerged', 'ViewerRepos', 'ViewerLogin'])
+
 export default async function handler(req: ApiRequest, res: ApiResponse): Promise<void> {
   res.setHeader('Cache-Control', 'private, no-store')
   if (req.method !== 'POST') {
@@ -33,8 +40,9 @@ export default async function handler(req: ApiRequest, res: ApiResponse): Promis
     res.status(400).json({ error: 'Invalid GraphQL query' })
     return
   }
-  if (/\bmutation\b/i.test(body.query)) {
-    res.status(403).json({ error: 'Only read-only GitHub queries are allowed' })
+  const operation = /^\s*query\s+([A-Za-z0-9_]+)\s*[({]/.exec(body.query)?.[1]
+  if (!operation || !ALLOWED_OPERATIONS.has(operation)) {
+    res.status(403).json({ error: 'Only the dashboard read-only queries are allowed' })
     return
   }
 

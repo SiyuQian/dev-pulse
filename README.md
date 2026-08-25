@@ -9,7 +9,7 @@ A zero-config PR activity dashboard for a small GitHub team. Sign in once to see
 3. It automatically discovers repositories visible to that GitHub account.
 4. The existing dashboard views load without PATs or watchlists.
 
-GitHub credentials are encrypted in an `HttpOnly`, `Secure`, `SameSite=Lax` session cookie. The browser sends fixed read-only GraphQL operations through a same-origin Vercel Function; it never receives or stores the OAuth access token.
+GitHub credentials are encrypted in an `HttpOnly`, `Secure`, `SameSite=Lax` session cookie (`Secure` is omitted only for `http://localhost` during local development). The browser sends fixed read-only GraphQL operations through a same-origin Vercel Function; it never receives or stores the OAuth access token. Note the OAuth `repo` scope GitHub grants is read-write — OAuth Apps have no read-only private-repo scope — so read-only access is enforced by the proxy's pinned operation allowlist, not by the grant.
 
 ## Features
 
@@ -69,7 +69,8 @@ Vercel builds the Vite frontend and automatically deploys files under `api/` as 
 - OAuth access tokens never enter client JavaScript, localStorage, URLs, or logs.
 - Session contents use AES-256-GCM authenticated encryption.
 - Only allowlisted GitHub logins receive a session.
-- The GraphQL proxy requires a valid same-origin session and rejects mutations.
+- The GraphQL proxy requires a valid same-origin session and forwards only the app's own pinned read-only operations — never mutations or arbitrary queries. The underlying `repo` grant is read-write.
+- Sign-out revokes the GitHub OAuth token (best-effort) and clears the session cookie. Because sessions are stateless, a captured cookie whose token could not be revoked remains valid until its 7-day expiry; removing the login from `ALLOWED_GITHUB_USERS` cuts access immediately.
 - Automatic repository scope comes from the signed-in user's own GitHub permissions.
 - No database or shared service-account PAT is used.
 

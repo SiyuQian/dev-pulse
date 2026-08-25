@@ -9,16 +9,17 @@ function query(queryKey: unknown[], data: unknown = { prs: [] }): PersistableQue
 const ACCOUNT = '1jq4x7'
 
 describe('shouldPersistQuery', () => {
-  it('persists the PR queries that gate first paint', () => {
+  it('persists the queries that gate first paint', () => {
     expect(shouldPersistQuery(query(['openPrs', ACCOUNT, ['a/b'], []]))).toBe(true)
     expect(shouldPersistQuery(query(['mergedPrs', ACCOUNT, ['a/b'], [], '2026-07-01']))).toBe(true)
+    // The repo roster gates first paint too: the shell waits on it for scope.
+    expect(shouldPersistQuery(query(['viewerRepos', ACCOUNT]))).toBe(true)
   })
 
-  // Identity and the repo roster are cheap to refetch and have no first-paint
-  // value, so they stay out of a blob that can end up in a bug report.
-  it('keeps identity and repo-list queries off disk', () => {
+  // Identity is cheap to refetch and has no first-paint value, so it stays out
+  // of a blob that can end up in a bug report.
+  it('keeps identity queries off disk', () => {
     expect(shouldPersistQuery(query(['viewer', ACCOUNT]))).toBe(false)
-    expect(shouldPersistQuery(query(['viewerRepos', ACCOUNT]))).toBe(false)
   })
 
   it('does not persist queries added later without review', () => {
