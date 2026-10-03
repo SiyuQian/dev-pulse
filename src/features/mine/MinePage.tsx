@@ -199,6 +199,7 @@ function OpenView({ query, blocked }: { query: string; blocked: Blocked }) {
         title="My pull requests"
         sub={[
           `${allRows.length} open`,
+          data.truncated ? 'partial — search capped at 1,000 results' : null,
           `${onMe} on you`,
           medianIdle === null ? null : `median idle ${formatDays(medianIdle)}`,
         ]

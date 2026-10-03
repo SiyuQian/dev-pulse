@@ -1,3 +1,4 @@
+import type { QueryClient } from '@tanstack/react-query'
 import { QUERY_CACHE_KEY } from './queryCache'
 
 const LEGACY_TOKEN_KEYS = ['devpulse:tokens:v2', 'devpulse:token:v1'] as const
@@ -21,6 +22,16 @@ export function clearPrivateClientData(storage: ClientStorage = window.localStor
     }
   }
   return complete
+}
+
+/**
+ * Session-loss cleanup. The persister rewrites its blob from the in-memory cache,
+ * so private queries must leave memory as well as localStorage. `authSession`
+ * stays: the provider observes it, and removing it would refetch in a loop.
+ */
+export function clearSessionData(queryClient: QueryClient, storage?: ClientStorage): void {
+  queryClient.removeQueries({ predicate: (query) => query.queryKey[0] !== 'authSession' })
+  clearPrivateClientData(storage)
 }
 
 /** One-time cleanup when upgrading a browser from the PAT-based application. */

@@ -91,7 +91,17 @@ export function PeoplePage() {
 
   return (
     <div className="fade-in">
-      <SectionHead title="People" sub={`${people.length} active · ${totalOpen} open now`}>
+      <SectionHead
+        title="People"
+        sub={[
+          `${people.length} active · ${totalOpen} open now`,
+          open.data.truncated || merged.data?.truncated
+            ? 'partial — search capped at 1,000 results'
+            : null,
+        ]
+          .filter(Boolean)
+          .join(' · ')}
+      >
         <Seg
           label="Merged window"
           value={days}

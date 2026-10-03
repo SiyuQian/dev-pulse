@@ -27,14 +27,15 @@ function accountKey(token: string): string {
 }
 
 /**
- * 401 means the session is gone — retrying cannot fix it. 403 is GitHub's
- * secondary rate limit — retrying immediately replays the whole chunked
- * fan-out and digs the hole deeper.
+ * 401 means the session is gone — retrying cannot fix it. 403 (secondary) and
+ * 429 (primary, see graphql() in ./github) are GitHub rate limits — retrying
+ * immediately replays the whole chunked fan-out and digs the hole deeper.
  */
+const FATAL_STATUSES = new Set([401, 403, 429])
+
 export function retryUnlessFatal(failureCount: number, error: Error): boolean {
   return (
-    failureCount < 2 &&
-    !(error instanceof GitHubError && (error.status === 401 || error.status === 403))
+    failureCount < 2 && !(error instanceof GitHubError && FATAL_STATUSES.has(error.status ?? 0))
   )
 }
 

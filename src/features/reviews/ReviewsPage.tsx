@@ -45,6 +45,9 @@ export function ReviewsPage() {
   const { data: viewer } = useViewer(token)
   const { data, isPending, error } = useOpenPrs(token, config)
 
+  if (config.repos.length === 0 && config.users.length === 0) {
+    return <Empty>No active repositories were found for this GitHub account.</Empty>
+  }
   if (error && !data) return <Empty error>Failed to load PRs: {error.message}</Empty>
   if (isPending || !data) return <Empty>Loading review activity…</Empty>
 
@@ -81,7 +84,12 @@ export function ReviewsPage() {
     <div className="fade-in">
       <SectionHead
         title="Review load"
-        sub={`${prs.length} PRs in review · ${totalRequests} outstanding requests`}
+        sub={[
+          `${prs.length} PRs in review · ${totalRequests} outstanding requests`,
+          data.truncated ? 'partial — search capped at 1,000 results' : null,
+        ]
+          .filter(Boolean)
+          .join(' · ')}
       />
 
       <Grid cols={4}>

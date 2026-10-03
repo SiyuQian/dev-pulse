@@ -38,9 +38,11 @@ export default async function handler(req: ApiRequest, res: ApiResponse): Promis
           'X-GitHub-Api-Version': '2022-11-28',
         },
         body: JSON.stringify({ access_token: session.token }),
+        // A stalled GitHub must not hold sign-out until the function times out.
+        signal: AbortSignal.timeout(3000),
       })
     } catch {
-      // GitHub unreachable — the cookie still dies below.
+      // GitHub unreachable or timed out — the cookie still dies below.
     }
   }
 

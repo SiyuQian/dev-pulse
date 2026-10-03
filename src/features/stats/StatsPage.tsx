@@ -43,6 +43,9 @@ export function StatsPage() {
   const since = useMemo(() => new Date(now - days * 86_400_000).toISOString(), [now, days])
   const { data, isPending, error } = useMergedPrs(token, config, since)
 
+  if (config.repos.length === 0 && config.users.length === 0) {
+    return <Empty>No active repositories were found for this GitHub account.</Empty>
+  }
   if (error && !data) return <Empty error>Failed to load stats: {error.message}</Empty>
   if (isPending || !data) return <Empty>Loading merge history…</Empty>
   const merged = data.prs

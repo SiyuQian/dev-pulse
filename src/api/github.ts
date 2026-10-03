@@ -34,8 +34,12 @@ async function graphql<T>(
   }
   const body = (await res.json()) as { data?: T; errors?: { message: string; type?: string }[] }
   if (body.errors?.length) {
-    const rateLimited = body.errors.some((e) => e.type === 'RATE_LIMITED')
-    throw new GitHubError(rateLimited ? 'GitHub rate limit exceeded' : body.errors[0].message)
+    // The primary GraphQL rate limit arrives as HTTP 200 + RATE_LIMITED; 429 lets
+    // retryUnlessFatal recognise it alongside the 403 secondary limit.
+    if (body.errors.some((e) => e.type === 'RATE_LIMITED')) {
+      throw new GitHubError('GitHub rate limit exceeded', 429)
+    }
+    throw new GitHubError(body.errors[0].message)
   }
   if (!body.data) throw new GitHubError('Empty GraphQL response')
   return body.data

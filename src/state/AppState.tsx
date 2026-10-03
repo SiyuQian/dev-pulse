@@ -2,6 +2,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { createContext, useContext, useEffect, useMemo, type ReactNode } from 'react'
 import { useViewerRepos } from '../api/queries'
 import { fetchSession } from '../api/session'
+import { clearSessionData } from '../storage/securityMigration'
 import type { WatchConfig } from '../storage/config'
 import { automaticConfig } from './automaticScope'
 
@@ -58,6 +59,13 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     window.addEventListener('devpulse:unauthorized', recheck)
     return () => window.removeEventListener('devpulse:unauthorized', recheck)
   }, [queryClient])
+
+  // No session (expired, revoked, or never signed in): the persisted repo roster
+  // and PR data must not outlive it on disk.
+  const signedOut = session.isSuccess && session.data === null
+  useEffect(() => {
+    if (signedOut) clearSessionData(queryClient)
+  }, [queryClient, signedOut])
 
   const token = session.data ? `session:${session.data.login}` : ''
   const login = session.data?.login ?? ''
