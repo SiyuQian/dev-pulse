@@ -1,5 +1,4 @@
 import { useMemo, useState, type CSSProperties } from 'react'
-import { Link } from 'react-router-dom'
 import { useMergedPrs, useOpenPrs, useViewer } from '../../api/queries'
 import { useAppState } from '../../state/AppState'
 import { Avatar, Cell, Empty, Grid, SectionHead, Seg, Stat } from '../shared/ui'
@@ -64,7 +63,7 @@ export function PeoplePage() {
       // Reviewers count as active people even with no open PRs of their own.
       for (const reviewer of pr.requestedReviewers) get(reviewer).reviewRequests += 1
     }
-    for (const pr of merged.data ?? []) {
+    for (const pr of merged.data?.prs ?? []) {
       const p = get(pr.author)
       p.merged += 1
       p.additions += pr.additions
@@ -76,26 +75,15 @@ export function PeoplePage() {
     )
   }, [open.data, merged.data, staleDays])
 
-  if (!token) {
-    return (
-      <Empty>
-        No GitHub token configured. Add one in <Link to="/settings">Settings</Link>.
-      </Empty>
-    )
-  }
   if (config.repos.length === 0 && config.users.length === 0) {
-    return (
-      <Empty>
-        Watchlist is empty. Add repos or people in <Link to="/settings">Settings</Link>.
-      </Empty>
-    )
+    return <Empty>No active repositories were found for this GitHub account.</Empty>
   }
   if (open.error && !open.data)
     return <Empty error>Failed to load activity: {open.error.message}</Empty>
   if (open.isPending || !open.data) return <Empty>Loading team activity…</Empty>
 
   const totalOpen = open.data.prs.length
-  const totalMerged = merged.data?.length ?? 0
+  const totalMerged = merged.data?.prs.length ?? 0
   const maxOpen = Math.max(1, ...people.map((p) => p.open))
   const maxMerged = Math.max(1, ...people.map((p) => p.merged))
   const medianCycle = median(people.flatMap((p) => p.cycleTimes))
@@ -103,7 +91,17 @@ export function PeoplePage() {
 
   return (
     <div className="fade-in">
-      <SectionHead title="People" sub={`${people.length} active · ${totalOpen} open now`}>
+      <SectionHead
+        title="People"
+        sub={[
+          `${people.length} active · ${totalOpen} open now`,
+          open.data.truncated || merged.data?.truncated
+            ? 'partial — search capped at 1,000 results'
+            : null,
+        ]
+          .filter(Boolean)
+          .join(' · ')}
+      >
         <Seg
           label="Merged window"
           value={days}

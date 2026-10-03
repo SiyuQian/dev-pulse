@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Link } from 'react-router-dom'
 import { useOpenPrs, useViewer } from '../../api/queries'
 import { useAppState } from '../../state/AppState'
 import type { PullRequest } from '../../api/types'
@@ -127,19 +126,8 @@ export function BoardPage() {
   const flat = useMemo(() => groups.flatMap((g) => g.rows), [groups])
   const [cursor, setCursor] = useRowNav(flat, searchRef)
 
-  if (!token) {
-    return (
-      <Empty>
-        No GitHub token configured. Add one in <Link to="/settings">Settings</Link>.
-      </Empty>
-    )
-  }
   if (config.repos.length === 0 && config.users.length === 0) {
-    return (
-      <Empty>
-        Watchlist is empty. Add repos or people in <Link to="/settings">Settings</Link>.
-      </Empty>
-    )
+    return <Empty>No active repositories were found for this GitHub account.</Empty>
   }
   // With a persisted cache, `error` and `data` coexist: a failed background
   // refetch must not throw away rows we can still show. TopBar marks them stale.
@@ -150,6 +138,7 @@ export function BoardPage() {
   const medianIdle = median(allRows.map((r) => r.idle))
   const sub = [
     `${allRows.length} open`,
+    data.truncated ? 'partial — search capped at 1,000 results' : null,
     medianIdle === null ? null : `median idle ${formatDays(medianIdle)}`,
     idleCount > 0 ? `${idleCount} past ${staleDays}d` : null,
   ]

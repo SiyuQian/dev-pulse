@@ -1,4 +1,3 @@
-import { Link } from 'react-router-dom'
 import { useOpenPrs, useViewer } from '../../api/queries'
 import { useAppState } from '../../state/AppState'
 import type { PullRequest } from '../../api/types'
@@ -46,12 +45,8 @@ export function ReviewsPage() {
   const { data: viewer } = useViewer(token)
   const { data, isPending, error } = useOpenPrs(token, config)
 
-  if (!token) {
-    return (
-      <Empty>
-        No GitHub token configured. Add one in <Link to="/settings">Settings</Link>.
-      </Empty>
-    )
+  if (config.repos.length === 0 && config.users.length === 0) {
+    return <Empty>No active repositories were found for this GitHub account.</Empty>
   }
   if (error && !data) return <Empty error>Failed to load PRs: {error.message}</Empty>
   if (isPending || !data) return <Empty>Loading review activity…</Empty>
@@ -89,7 +84,12 @@ export function ReviewsPage() {
     <div className="fade-in">
       <SectionHead
         title="Review load"
-        sub={`${prs.length} PRs in review · ${totalRequests} outstanding requests`}
+        sub={[
+          `${prs.length} PRs in review · ${totalRequests} outstanding requests`,
+          data.truncated ? 'partial — search capped at 1,000 results' : null,
+        ]
+          .filter(Boolean)
+          .join(' · ')}
       />
 
       <Grid cols={4}>
@@ -125,7 +125,7 @@ export function ReviewsPage() {
       <Grid cols={2}>
         <Cell
           title="Needs your review"
-          note={viewer ? `assigned to @${viewer}` : 'save a valid token to see yours'}
+          note={viewer ? `assigned to @${viewer}` : 'sign in to see yours'}
         >
           <Queue
             empty={

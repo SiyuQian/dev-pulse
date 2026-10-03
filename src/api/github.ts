@@ -1,7 +1,5 @@
 import type { CiStatus, PullRequest, RateLimitInfo, ReviewDecision } from './types'
 
-const GRAPHQL_URL = 'https://api.github.com/graphql'
-
 export class GitHubError extends Error {
   status?: number
 
@@ -13,29 +11,35 @@ export class GitHubError extends Error {
 }
 
 async function graphql<T>(
-  token: string,
+  sessionIdentity: string,
   query: string,
   variables: Record<string, unknown>,
 ): Promise<T> {
-  if (!token) throw new GitHubError('No GitHub token configured')
-  const res = await fetch(GRAPHQL_URL, {
+  if (!sessionIdentity) throw new GitHubError('No authenticated GitHub session')
+  const res = await fetch('/api/github/graphql', {
     method: 'POST',
-    headers: {
-      Authorization: `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'same-origin',
     body: JSON.stringify({ query, variables }),
   })
   if (!res.ok) {
-    throw new GitHubError(
-      res.status === 401 ? 'Invalid or expired token' : `GitHub API error (${res.status})`,
-      res.status,
-    )
+    if (res.status === 401) {
+      // The session cookie expired or the login left the allowlist. Nudge the
+      // provider to re-check /api/auth/session so the sign-in screen comes back
+      // instead of a broken board (AppState listens for this event).
+      if (typeof window !== 'undefined') window.dispatchEvent(new Event('devpulse:unauthorized'))
+      throw new GitHubError('Session expired — sign in again', res.status)
+    }
+    throw new GitHubError(`GitHub API error (${res.status})`, res.status)
   }
   const body = (await res.json()) as { data?: T; errors?: { message: string; type?: string }[] }
   if (body.errors?.length) {
-    const rateLimited = body.errors.some((e) => e.type === 'RATE_LIMITED')
-    throw new GitHubError(rateLimited ? 'GitHub rate limit exceeded' : body.errors[0].message)
+    // The primary GraphQL rate limit arrives as HTTP 200 + RATE_LIMITED; 429 lets
+    // retryUnlessFatal recognise it alongside the 403 secondary limit.
+    if (body.errors.some((e) => e.type === 'RATE_LIMITED')) {
+      throw new GitHubError('GitHub rate limit exceeded', 429)
+    }
+    throw new GitHubError(body.errors[0].message)
   }
   if (!body.data) throw new GitHubError('Empty GraphQL response')
   return body.data
@@ -59,14 +63,22 @@ interface SearchPrNode {
 }
 
 interface SearchResult {
-  search: { issueCount: number; nodes: SearchPrNode[] }
+  search: {
+    issueCount: number
+    nodes: SearchPrNode[]
+    pageInfo?: { hasNextPage: boolean; endCursor: string | null }
+  }
   rateLimit: { remaining: number; limit: number; resetAt: string }
 }
 
 const SEARCH_PRS_QUERY = /* GraphQL */ `
-  query SearchPRs($q: String!, $first: Int!) {
-    search(query: $q, type: ISSUE, first: $first) {
+  query SearchPRs($q: String!, $first: Int!, $after: String) {
+    search(query: $q, type: ISSUE, first: $first, after: $after) {
       issueCount
+      pageInfo {
+        hasNextPage
+        endCursor
+      }
       nodes {
         ... on PullRequest {
           id
@@ -117,6 +129,60 @@ const SEARCH_PRS_QUERY = /* GraphQL */ `
   }
 `
 
+const SEARCH_PAGE_LIMIT = 10
+
+/**
+ * How many requests may be in flight at once across a chunked search. The
+ * automatic scope can produce dozens of chunks; firing them all simultaneously
+ * through one Vercel Function is a GitHub secondary-rate-limit trigger.
+ */
+const SEARCH_CONCURRENCY = 5
+
+async function inPool<T>(tasks: (() => Promise<T>)[], limit = SEARCH_CONCURRENCY): Promise<T[]> {
+  const results: T[] = new Array(tasks.length)
+  let next = 0
+  const workers = Array.from({ length: Math.min(limit, tasks.length) }, async () => {
+    while (next < tasks.length) {
+      const index = next++
+      results[index] = await tasks[index]()
+    }
+  })
+  await Promise.all(workers)
+  return results
+}
+
+interface OpenSearchResult {
+  nodes: SearchPrNode[]
+  rateLimit: { remaining: number; limit: number; resetAt: string }
+  /** GitHub search stops at 1,000 results; the nodes are what we could get. */
+  truncated: boolean
+}
+
+async function fetchOpenSearch(token: string, q: string): Promise<OpenSearchResult> {
+  const nodes: SearchPrNode[] = []
+  let after: string | null = null
+  let rateLimit = { remaining: 0, limit: 0, resetAt: '' }
+
+  for (let page = 0; page < SEARCH_PAGE_LIMIT; page++) {
+    const result: SearchResult = await graphql<SearchResult>(token, SEARCH_PRS_QUERY, {
+      q,
+      first: 100,
+      after,
+    })
+    nodes.push(...result.search.nodes)
+    rateLimit = result.rateLimit
+    if (!result.search.pageInfo?.hasNextPage) {
+      return { nodes, rateLimit, truncated: false }
+    }
+    after = result.search.pageInfo.endCursor
+    if (!after) throw new GitHubError('GitHub search pagination returned no cursor')
+  }
+
+  // Past the cap (which matches GitHub's own 1,000-result search ceiling):
+  // degrade to what was collected rather than taking the whole board down.
+  return { nodes, rateLimit, truncated: true }
+}
+
 function toPullRequest(node: SearchPrNode): PullRequest {
   return {
     id: node.id,
@@ -141,6 +207,34 @@ function toPullRequest(node: SearchPrNode): PullRequest {
 export interface OpenPrsResult {
   prs: PullRequest[]
   rateLimit: RateLimitInfo
+  /** One or more search chunks hit GitHub's 1,000-result ceiling. */
+  truncated: boolean
+}
+
+// A chunk closes on whichever binds first: 20 repo qualifiers, or GitHub's
+// 256-character search-query limit — typical repo names mean the length cap
+// usually wins, so real chunks hold roughly 8–14 repos.
+const REPOS_PER_SEARCH = 20
+const SEARCH_QUERY_LIMIT = 256
+
+function repoSearches(repos: string[], prefix: string): string[] {
+  const searches: string[] = []
+  let qualifiers: string[] = []
+
+  const flush = () => {
+    if (qualifiers.length === 0) return
+    searches.push(`${prefix} ${qualifiers.join(' ')}`)
+    qualifiers = []
+  }
+
+  for (const repo of repos) {
+    const qualifier = `repo:${repo}`
+    const candidate = `${prefix} ${[...qualifiers, qualifier].join(' ')}`
+    if (qualifiers.length >= REPOS_PER_SEARCH || candidate.length > SEARCH_QUERY_LIMIT) flush()
+    qualifiers.push(qualifier)
+  }
+  flush()
+  return searches
 }
 
 // One search query covers repos + authors; GitHub ORs multiple repo:/author: qualifiers of the same kind.
@@ -159,20 +253,21 @@ export async function fetchOpenPrs(
   repos: string[],
   users: string[],
 ): Promise<OpenPrsResult> {
-  // repo: and author: qualifiers AND together across kinds, so when both are set
-  // we run two searches (watched repos, watched authors) and merge.
+  // repo: and author: qualifiers AND together across kinds, so repos and
+  // authors search separately and merge. The automatic scope can chunk into
+  // dozens of repo searches (see repoSearches), so chunks run through a small
+  // concurrency pool rather than all at once.
   const queries: string[] = []
-  if (repos.length > 0) queries.push(buildSearchQuery(repos, []))
+  queries.push(...repoSearches(repos, 'is:pr is:open'))
   if (users.length > 0) queries.push(`is:pr is:open ${users.map((u) => `author:${u}`).join(' ')}`)
-  if (queries.length === 0) return { prs: [], rateLimit: { remaining: 0, limit: 0, resetAt: '' } }
+  if (queries.length === 0)
+    return { prs: [], rateLimit: { remaining: 0, limit: 0, resetAt: '' }, truncated: false }
 
-  const results = await Promise.all(
-    queries.map((q) => graphql<SearchResult>(token, SEARCH_PRS_QUERY, { q, first: 50 })),
-  )
+  const results = await inPool(queries.map((q) => () => fetchOpenSearch(token, q)))
   const seen = new Set<string>()
   const prs: PullRequest[] = []
   for (const result of results) {
-    for (const node of result.search.nodes) {
+    for (const node of result.nodes) {
       if (!node.id || seen.has(node.id)) continue
       seen.add(node.id)
       prs.push(toPullRequest(node))
@@ -180,11 +275,12 @@ export async function fetchOpenPrs(
   }
   prs.sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1))
   const last = results[results.length - 1].rateLimit
-  return { prs, rateLimit: { remaining: last.remaining, limit: last.limit, resetAt: last.resetAt } }
+  return {
+    prs,
+    rateLimit: { remaining: last.remaining, limit: last.limit, resetAt: last.resetAt },
+    truncated: results.some((result) => result.truncated),
+  }
 }
-
-/** GitHub's search API caps `first` at 100, and one page is a whole person's queue. */
-const MY_PRS_PAGE_SIZE = 100
 
 /**
  * Every PR you have open, anywhere — deliberately not scoped to the watchlist.
@@ -195,13 +291,10 @@ const MY_PRS_PAGE_SIZE = 100
  * states its scope on screen: its counts will not match the board's.
  */
 export async function fetchMyOpenPrs(token: string): Promise<OpenPrsResult> {
-  const result = await graphql<SearchResult>(token, SEARCH_PRS_QUERY, {
-    q: 'is:pr is:open author:@me',
-    first: MY_PRS_PAGE_SIZE,
-  })
-  const prs = result.search.nodes.filter((node) => node.id).map(toPullRequest)
+  const result = await fetchOpenSearch(token, 'is:pr is:open author:@me')
+  const prs = result.nodes.filter((node) => node.id).map(toPullRequest)
   prs.sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1))
-  return { prs, rateLimit: result.rateLimit }
+  return { prs, rateLimit: result.rateLimit, truncated: result.truncated }
 }
 
 interface MergedPrNode {
@@ -218,9 +311,13 @@ interface MergedPrNode {
 }
 
 const SEARCH_MERGED_QUERY = /* GraphQL */ `
-  query SearchMerged($q: String!, $first: Int!) {
-    search(query: $q, type: ISSUE, first: $first) {
+  query SearchMerged($q: String!, $first: Int!, $after: String) {
+    search(query: $q, type: ISSUE, first: $first, after: $after) {
       issueCount
+      pageInfo {
+        hasNextPage
+        endCursor
+      }
       nodes {
         ... on PullRequest {
           id
@@ -242,6 +339,41 @@ const SEARCH_MERGED_QUERY = /* GraphQL */ `
     }
   }
 `
+
+interface MergedSearchResult {
+  search: {
+    issueCount?: number
+    nodes: MergedPrNode[]
+    pageInfo?: { hasNextPage: boolean; endCursor: string | null }
+  }
+}
+
+async function fetchMergedSearch(
+  token: string,
+  q: string,
+): Promise<{ nodes: MergedPrNode[]; truncated: boolean }> {
+  const nodes: MergedPrNode[] = []
+  let after: string | null = null
+
+  for (let page = 0; page < SEARCH_PAGE_LIMIT; page++) {
+    const result: MergedSearchResult = await graphql<MergedSearchResult>(
+      token,
+      SEARCH_MERGED_QUERY,
+      {
+        q,
+        first: 100,
+        after,
+      },
+    )
+    nodes.push(...result.search.nodes)
+    if (!result.search.pageInfo?.hasNextPage) return { nodes, truncated: false }
+    after = result.search.pageInfo.endCursor
+    if (!after) throw new GitHubError('GitHub search pagination returned no cursor')
+  }
+
+  // Same degrade-not-throw rule as fetchOpenSearch.
+  return { nodes, truncated: true }
+}
 
 export interface MergedPr {
   id: string
@@ -278,14 +410,19 @@ function toMergedPr(node: MergedPrNode): MergedPr {
  * Your own recently-merged PRs, unscoped, to sit behind the Mine view's
  * "Merged" toggle. Same `author:@me` reasoning as fetchMyOpenPrs.
  */
-export async function fetchMyMergedPrs(token: string, sinceIso: string): Promise<MergedPr[]> {
-  const data = await graphql<{ search: { nodes: MergedPrNode[] } }>(token, SEARCH_MERGED_QUERY, {
-    q: `is:pr is:merged author:@me merged:>=${sinceIso.slice(0, 10)}`,
-    first: MY_PRS_PAGE_SIZE,
-  })
-  const prs = data.search.nodes.filter((node) => node.id).map(toMergedPr)
+export interface MergedPrsResult {
+  prs: MergedPr[]
+  truncated: boolean
+}
+
+export async function fetchMyMergedPrs(token: string, sinceIso: string): Promise<MergedPrsResult> {
+  const result = await fetchMergedSearch(
+    token,
+    `is:pr is:merged author:@me merged:>=${sinceIso.slice(0, 10)}`,
+  )
+  const prs = result.nodes.filter((node) => node.id).map(toMergedPr)
   prs.sort((a, b) => (a.mergedAt < b.mergedAt ? 1 : -1))
-  return prs
+  return { prs, truncated: result.truncated }
 }
 
 export async function fetchMergedPrs(
@@ -293,35 +430,35 @@ export async function fetchMergedPrs(
   repos: string[],
   users: string[],
   sinceIso: string,
-): Promise<MergedPr[]> {
+): Promise<MergedPrsResult> {
   const since = sinceIso.slice(0, 10)
   const queries: string[] = []
-  if (repos.length > 0)
-    queries.push(`is:pr is:merged merged:>=${since} ${repos.map((r) => `repo:${r}`).join(' ')}`)
+  queries.push(...repoSearches(repos, `is:pr is:merged merged:>=${since}`))
   if (users.length > 0)
     queries.push(`is:pr is:merged merged:>=${since} ${users.map((u) => `author:${u}`).join(' ')}`)
-  if (queries.length === 0) return []
+  if (queries.length === 0) return { prs: [], truncated: false }
 
-  const results = await Promise.all(
-    queries.map((q) =>
-      graphql<{ search: { nodes: MergedPrNode[] } }>(token, SEARCH_MERGED_QUERY, { q, first: 100 }),
-    ),
-  )
+  const results = await inPool(queries.map((q) => () => fetchMergedSearch(token, q)))
   const seen = new Set<string>()
   const prs: MergedPr[] = []
   for (const result of results) {
-    for (const node of result.search.nodes) {
+    for (const node of result.nodes) {
       if (!node.id || seen.has(node.id)) continue
       seen.add(node.id)
       prs.push(toMergedPr(node))
     }
   }
   prs.sort((a, b) => (a.mergedAt < b.mergedAt ? 1 : -1))
-  return prs
+  return { prs, truncated: results.some((result) => result.truncated) }
 }
 
 export async function fetchViewerLogin(token: string): Promise<string> {
-  const data = await graphql<{ viewer: { login: string } }>(token, 'query { viewer { login } }', {})
+  // Named so the proxy's operation allowlist (api/github/graphql.ts) can pin it.
+  const data = await graphql<{ viewer: { login: string } }>(
+    token,
+    'query ViewerLogin { viewer { login } }',
+    {},
+  )
   return data.viewer.login
 }
 
@@ -359,13 +496,7 @@ export interface ViewerRepoPage {
   nextCursor: string | null
 }
 
-/**
- * One page of the repos the token can see, most-recently-pushed first.
- *
- * GraphQL cursor pagination is inherently serial, so this returns a single page
- * rather than awaiting the whole walk — the repo picker renders from page one
- * while the caller backfills the rest in the background (see useViewerRepos).
- */
+/** One page of the repos the token can see, most-recently-pushed first. */
 export async function fetchViewerRepoPage(
   token: string,
   after: string | null,
@@ -379,157 +510,38 @@ export async function fetchViewerRepoPage(
     }
   } = await graphql(token, VIEWER_REPOS_QUERY, { first: 100, after })
   const { nodes, pageInfo } = data.viewer.repositories
+  if (pageInfo.hasNextPage && !pageInfo.endCursor) {
+    throw new GitHubError('Repository pagination returned no cursor')
+  }
   return { repos: nodes, nextCursor: pageInfo.hasNextPage ? pageInfo.endCursor : null }
 }
 
-export interface OrgMember {
-  login: string
-  /** Display name, when the member has set one. */
-  name: string | null
-  /** The org this member was found in — used to group the picker. */
-  org: string
-}
-
 /**
- * Where the org-member walk got to: which orgs there are, which one we're in,
- * and how far through its members. Members paginate per org, so a plain cursor
- * isn't enough — the walk has to carry the org list with it.
+ * Keeps a large account's repo walk bounded (10 × 100 repos). `orderBy:
+ * PUSHED_AT DESC` means hitting the cap keeps the most active repos; the
+ * `truncated` flag surfaces in the UI rather than silently narrowing scope.
  */
-export interface OrgMemberCursor {
-  orgs: string[]
-  index: number
-  after: string | null
+const VIEWER_REPO_PAGE_LIMIT = 10
+
+export interface AllViewerRepos {
+  repos: ViewerRepo[]
+  truncated: boolean
 }
 
-/** An org the walk passed over, and what GitHub said when it tried. */
-export interface SkippedOrg {
-  org: string
-  reason: string
-}
+/** Walks the visible repository connection, bounded, before the dashboard renders. */
+export async function fetchAllViewerRepos(token: string): Promise<AllViewerRepos> {
+  const repos: ViewerRepo[] = []
+  const seenCursors = new Set<string>()
+  let cursor: string | null = null
 
-export interface OrgMemberPage {
-  members: OrgMember[]
-  /** Null once every org has been walked. */
-  next: OrgMemberCursor | null
-  /**
-   * Every org this walk covers. Carried on each page so the picker can tell
-   * "your token reports no orgs at all" apart from "your orgs returned nobody" —
-   * the two have completely different fixes and used to look identical.
-   */
-  orgs: string[]
-  /**
-   * Orgs skipped on *this* page because their member list wasn't readable.
-   * Silently dropping these is what made an unusable token look like an empty
-   * org: GitHub answers "org you can't see" with HTTP 200 + a NOT_FOUND error,
-   * so nothing downstream had any way to know.
-   */
-  skipped: SkippedOrg[]
-}
-
-/** Enough for anyone's org list; beyond this the picker's search is the answer. */
-const VIEWER_ORGS_LIMIT = 25
-
-const VIEWER_ORGS_QUERY = /* GraphQL */ `
-  query ViewerOrgs($first: Int!) {
-    viewer {
-      organizations(first: $first) {
-        nodes {
-          login
-        }
-      }
-    }
-  }
-`
-
-const ORG_MEMBERS_QUERY = /* GraphQL */ `
-  query OrgMembers($org: String!, $first: Int!, $after: String) {
-    organization(login: $org) {
-      membersWithRole(first: $first, after: $after) {
-        pageInfo {
-          hasNextPage
-          endCursor
-        }
-        nodes {
-          login
-          name
-        }
-      }
-    }
-  }
-`
-
-export async function fetchViewerOrgs(token: string): Promise<string[]> {
-  const data = await graphql<{ viewer: { organizations: { nodes: { login: string }[] } } }>(
-    token,
-    VIEWER_ORGS_QUERY,
-    { first: VIEWER_ORGS_LIMIT },
-  )
-  return data.viewer.organizations.nodes.map((node) => node.login)
-}
-
-interface OrgMembersData {
-  organization: {
-    membersWithRole: {
-      pageInfo: { hasNextPage: boolean; endCursor: string | null }
-      nodes: { login: string; name: string | null }[]
-    }
-  } | null
-}
-
-/**
- * One page of teammates from the orgs the viewer belongs to, so Settings can
- * offer real colleagues instead of asking people to remember logins.
- *
- * Members paginate per org and cursors are serial, so this returns a single
- * page and a cursor to resume from — the picker renders page one immediately
- * and the caller backfills the rest (see useOrgMembers). Orgs whose member list
- * the token can't read are skipped rather than failing the walk: a fine-grained
- * PAT is scoped to one org, and its "Members" permission is opt-in.
- */
-export async function fetchOrgMemberPage(
-  token: string,
-  cursor: OrgMemberCursor | null,
-): Promise<OrgMemberPage> {
-  const orgs = cursor?.orgs ?? (await fetchViewerOrgs(token))
-  let index = cursor?.index ?? 0
-  let after = cursor?.after ?? null
-  const skipped: SkippedOrg[] = []
-
-  while (index < orgs.length) {
-    const org = orgs[index]
-    try {
-      const data = await graphql<OrgMembersData>(token, ORG_MEMBERS_QUERY, {
-        org,
-        first: 100,
-        after,
-      })
-      const page = data.organization?.membersWithRole
-      if (page) {
-        const members = page.nodes.map((node) => ({ login: node.login, name: node.name, org }))
-        const hasMoreInOrg = page.pageInfo.hasNextPage
-        const nextIndex = hasMoreInOrg ? index : index + 1
-        return {
-          members,
-          next:
-            hasMoreInOrg || nextIndex < orgs.length
-              ? { orgs, index: nextIndex, after: hasMoreInOrg ? page.pageInfo.endCursor : null }
-              : null,
-          orgs,
-          skipped,
-        }
-      }
-      // A 200 with `organization: null` and no thrown error: nothing to report
-      // beyond "this token can't resolve the org".
-      skipped.push({ org, reason: 'Not visible to this token' })
-    } catch (error) {
-      // A dead token is fatal everywhere; anything else here means "this org
-      // won't tell us", which the next org might well not repeat.
-      if (error instanceof GitHubError && error.status === 401) throw error
-      skipped.push({ org, reason: error instanceof Error ? error.message : 'Unknown error' })
-    }
-    index++
-    after = null
+  for (let page = 0; page < VIEWER_REPO_PAGE_LIMIT; page++) {
+    const result = await fetchViewerRepoPage(token, cursor)
+    repos.push(...result.repos)
+    cursor = result.nextCursor
+    if (!cursor) return { repos, truncated: false }
+    if (seenCursors.has(cursor)) throw new GitHubError('Repository pagination cursor repeated')
+    seenCursors.add(cursor)
   }
 
-  return { members: [], next: null, orgs, skipped }
+  return { repos, truncated: true }
 }
