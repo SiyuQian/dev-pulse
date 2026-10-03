@@ -48,8 +48,19 @@ beforeEach(() => {
   process.env.GITHUB_CLIENT_SECRET = 'client-secret'
 })
 
+/** Never settles unless aborted: a GitHub that accepted the connection, then stalled. */
+function stalledFetch(_url: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+  return new Promise((_resolve, reject) => {
+    const signal = init?.signal
+    if (!signal) return
+    if (signal.aborted) reject(signal.reason)
+    signal.addEventListener('abort', () => reject(signal.reason))
+  })
+}
+
 afterEach(() => {
   vi.unstubAllGlobals()
+  vi.restoreAllMocks()
   delete process.env.APP_URL
   delete process.env.SESSION_SECRET
   delete process.env.GITHUB_CLIENT_ID
@@ -96,6 +107,20 @@ describe('logout', () => {
       'fetch',
       vi.fn<typeof fetch>().mockRejectedValueOnce(new Error('network unavailable')),
     )
+    const sealed = sealSession({ login: 'SiyuQian', token: 'oauth-token' }, secret)
+    const { capture, res } = response()
+
+    await handler(request('POST', sealed), res)
+
+    const cookies = capture.headers['Set-Cookie'] as string[]
+    expect(cookies.some((c) => c.startsWith(`${SESSION_COOKIE}=;`))).toBe(true)
+    expect(capture.redirect?.statusCode).toBe(302)
+  })
+
+  it('still clears the cookie when GitHub revocation stalls', async () => {
+    // Stand in for the revocation timeout firing, so the test need not wait it out.
+    vi.spyOn(AbortSignal, 'timeout').mockReturnValue(AbortSignal.abort())
+    vi.stubGlobal('fetch', vi.fn(stalledFetch))
     const sealed = sealSession({ login: 'SiyuQian', token: 'oauth-token' }, secret)
     const { capture, res } = response()
 

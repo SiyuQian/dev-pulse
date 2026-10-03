@@ -31,7 +31,7 @@ function accountKey(token: string): string {
  * secondary rate limit — retrying immediately replays the whole chunked
  * fan-out and digs the hole deeper.
  */
-function retryUnlessFatal(failureCount: number, error: Error): boolean {
+export function retryUnlessFatal(failureCount: number, error: Error): boolean {
   return (
     failureCount < 2 &&
     !(error instanceof GitHubError && (error.status === 401 || error.status === 403))

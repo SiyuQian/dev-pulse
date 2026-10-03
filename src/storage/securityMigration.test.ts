@@ -1,5 +1,10 @@
+import { QueryClient } from '@tanstack/react-query'
 import { describe, expect, it } from 'vitest'
-import { clearPrivateClientData, runOAuthSecurityMigration } from './securityMigration'
+import {
+  clearPrivateClientData,
+  clearSessionData,
+  runOAuthSecurityMigration,
+} from './securityMigration'
 
 class MemoryStorage {
   private values = new Map<string, string>()
@@ -66,6 +71,25 @@ describe('OAuth client-data migration', () => {
 
     expect(storage.getItem(TOKENS_V2)).toBeNull()
     expect(storage.getItem(TOKEN_V1)).toBeNull()
+    expect(storage.getItem(QUERY_CACHE)).toBeNull()
+  })
+
+  it('drops private queries from memory and disk when the session ends', () => {
+    const storage = new MemoryStorage()
+    storage.setItem(QUERY_CACHE, '{"private":"repo roster"}')
+    const queryClient = new QueryClient()
+    const roster = { repos: [{ nameWithOwner: 'acme/secret', isPrivate: true }], truncated: false }
+    queryClient.setQueryData(['authSession'], null)
+    queryClient.setQueryData(['viewerRepos', 'acct'], roster)
+    queryClient.setQueryData(['openPrs', 'acct', [], []], { prs: [], truncated: false })
+
+    clearSessionData(queryClient, storage)
+
+    // The persister rewrites the blob from memory, so the cache must lose them too.
+    expect(queryClient.getQueryData(['viewerRepos', 'acct'])).toBeUndefined()
+    expect(queryClient.getQueryData(['openPrs', 'acct', [], []])).toBeUndefined()
+    // The provider observes authSession; removing it would refetch in a loop.
+    expect(queryClient.getQueryCache().find({ queryKey: ['authSession'] })).toBeDefined()
     expect(storage.getItem(QUERY_CACHE)).toBeNull()
   })
 })
